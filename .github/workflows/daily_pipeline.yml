@@ -105,7 +105,10 @@ jobs:
             fi
             
             git commit -m "$COMMIT_MSG"
-            git pull --rebase origin main
+
+            # Merge instead of rebase — binary files (.db, .h5) can't rebase
+            # -X theirs = pipeline's fresh data always wins on conflict
+            git pull --no-rebase -X theirs origin main || true
             git push
             echo "✅ Changes committed and pushed!"
           fi
