@@ -57,17 +57,52 @@ def denormalize_data(data: np.ndarray, scaler: MinMaxScaler) -> np.ndarray:
 # ============== Multi-City Features ==============
 
 
+def build_multi_city_hourly() -> tuple[pd.DataFrame, list[str]]:
+    """Build hourly temperature matrix from SQLite: (N_hours, 3 cities).
+
+    Returns:
+        df_pivot: DataFrame with columns = city_ids, index = timestamp (hourly)
+        city_ids: ordered list of city IDs matching column order
+    """
+    from src.config.constants import LSTM_CITY_IDS
+    from src.config.db import get_connection
+
+    city_ids = sorted(LSTM_CITY_IDS)
+
+    with get_connection() as conn:
+        rows = conn.execute(
+            """SELECT city_id, timestamp, temperature
+               FROM weather_historical
+               ORDER BY timestamp, city_id"""
+        ).fetchall()
+
+    df = pd.DataFrame(rows, columns=["city_id", "timestamp", "temperature"])
+    df["timestamp"] = pd.to_datetime(df["timestamp"])
+
+    # Pivot: rows=timestamps, columns=cities
+    df_pivot = df.pivot(index="timestamp", columns="city_id", values="temperature")
+    df_pivot = df_pivot[city_ids]  # enforce consistent column order
+    df_pivot = df_pivot.dropna()   # drop hours with missing cities
+    df_pivot = df_pivot.sort_index()
+
+    print(f"  📊 Multi-city hourly matrix: {df_pivot.shape[0]} hours × {df_pivot.shape[1]} cities")
+    print(f"     Range: {df_pivot.index[0]} → {df_pivot.index[-1]}")
+    print(f"     Cities: {city_ids}")
+
+    return df_pivot, city_ids
+
+
 def build_multi_city_daily() -> tuple[pd.DataFrame, list[str]]:
-    """Build daily avg temperature matrix from SQLite: (N_days, 6 cities).
+    """Build daily avg temperature matrix from SQLite: (N_days, 3 cities).
 
     Returns:
         df_pivot: DataFrame with columns = city_ids, index = date
         city_ids: ordered list of city IDs matching column order
     """
-    from src.config.cities import CITIES
+    from src.config.constants import LSTM_CITY_IDS
     from src.config.db import get_connection
 
-    city_ids = sorted(CITIES.keys())
+    city_ids = sorted(LSTM_CITY_IDS)
 
     with get_connection() as conn:
         rows = conn.execute(

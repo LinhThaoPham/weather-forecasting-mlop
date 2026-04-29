@@ -14,12 +14,13 @@ LSTM_ENCODER_UNITS = 128
 LSTM_DECODER_UNITS = 64
 LSTM_DROPOUT_RATE = 0.2
 LSTM_LEARNING_RATE = 0.001
-NUM_CITIES = 6  # feature_dim for multi-city LSTM
+LSTM_CITY_IDS = ["hanoi", "danang", "hcm"]  # Bắc-Trung-Nam
+NUM_CITIES = 3  # feature_dim for multi-city LSTM
 
 # LSTM Windows
 HOURLY_LOOKBACK = 24
 HOURLY_HORIZON = 72
-DAILY_LOOKBACK = 365   # 365 days = 1 year (multi-city, ~359 samples)
+DAILY_LOOKBACK = 90    # 90 days lookback (multi-city, ~634 samples)
 DAILY_HORIZON = 7
 
 # Training

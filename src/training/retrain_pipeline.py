@@ -198,54 +198,53 @@ def train_prophet_models(train_dir: str) -> dict:
 
 
 def train_lstm_models(weather_data, train_dir: str) -> dict:
-    """Step 2: Train LSTM hourly (single-city) + daily (multi-city), return metrics."""
+    """Step 2: Train LSTM hourly + daily, both multi-city (6 cities)."""
     from src.data_pipeline.feature_engineering import (
         build_multi_city_daily,
-        normalize_data,
+        build_multi_city_hourly,
         normalize_multi_city,
         sliding_window,
     )
     from src.models_logic.lstm_model import create_lstm_model
-    from src.training.evaluate import evaluate_lstm, evaluate_lstm_multi_city
+    from src.training.evaluate import evaluate_lstm_multi_city
 
     metrics = {}
 
-    # ── Hourly (single-city, backward compatible) ──
-    if weather_data is None:
-        weather_data = fetch_training_data(DEFAULT_CITY)
-    hourly_normalized, hourly_scaler = normalize_data(weather_data["y"].values)
+    # ── Hourly Multi-City (6 cities × ~17,520 hours) ──
+    print("   📡 Building multi-city hourly tensor from DB...")
+    df_hourly, city_ids = build_multi_city_hourly()
+    hourly_data = df_hourly.values  # (N_hours, 6)
+
+    hourly_normalized, hourly_scaler = normalize_multi_city(hourly_data)
     hourly_inputs, hourly_targets = sliding_window(hourly_normalized, HOURLY_LOOKBACK, HOURLY_HORIZON)
-    hourly_inputs = hourly_inputs.reshape((hourly_inputs.shape[0], hourly_inputs.shape[1], 1))
-    hourly_targets = hourly_targets.reshape((hourly_targets.shape[0], hourly_targets.shape[1], 1))
 
     split = int(len(hourly_inputs) * TRAIN_SPLIT_RATIO)
     X_train, X_val = hourly_inputs[:split], hourly_inputs[split:]
     y_train, y_val = hourly_targets[:split], hourly_targets[split:]
 
-    lstm_hourly = create_lstm_model(lookback_window=HOURLY_LOOKBACK, forecast_horizon=HOURLY_HORIZON, feature_dim=1)
+    lstm_hourly = create_lstm_model(lookback_window=HOURLY_LOOKBACK, forecast_horizon=HOURLY_HORIZON, feature_dim=NUM_CITIES)
     history = lstm_hourly.train(X_train, y_train, X_val, y_val, epochs=MAX_EPOCHS, batch_size=BATCH_SIZE)
     lstm_hourly.save(os.path.join(train_dir, model_filename("lstm", "hourly")))
     joblib.dump(hourly_scaler, os.path.join(train_dir, scaler_filename("hourly")))
 
-    hourly_metrics = evaluate_lstm(lstm_hourly.model, X_val, y_val, hourly_scaler)
+    hourly_metrics = evaluate_lstm_multi_city(lstm_hourly.model, X_val, y_val, hourly_scaler)
     hourly_metrics["val_loss"] = round(float(history.history["val_loss"][-1]), 6)
+    hourly_metrics["city_ids"] = city_ids
     metrics["lstm_hourly"] = hourly_metrics
-    print(f"   ✓ LSTM Hourly — MAE: {hourly_metrics['mae']}°C, Val Loss: {hourly_metrics['val_loss']}")
+    print(f"   ✓ LSTM Hourly (Multi-City) — MAE: {hourly_metrics['mae']}°C, Val Loss: {hourly_metrics['val_loss']}")
 
-    # ── Daily Multi-City (6 cities × 720 days) ──
+    # ── Daily Multi-City (6 cities × ~730 days) ──
     print("   📡 Building multi-city daily tensor from DB...")
-    df_pivot, city_ids = build_multi_city_daily()
-    daily_data = df_pivot.values  # (N_days, 6)
+    df_daily, city_ids = build_multi_city_daily()
+    daily_data = df_daily.values  # (N_days, 6)
 
     daily_normalized, daily_scaler = normalize_multi_city(daily_data)
     daily_inputs, daily_targets = sliding_window(daily_normalized, DAILY_LOOKBACK, DAILY_HORIZON)
-    # Shape: (n_samples, 720, 6) and (n_samples, 7, 6) — already correct from sliding_window
 
     split = int(len(daily_inputs) * TRAIN_SPLIT_RATIO)
     X_train, X_val = daily_inputs[:split], daily_inputs[split:]
     y_train, y_val = daily_targets[:split], daily_targets[split:]
 
-    from src.config.constants import NUM_CITIES
     lstm_daily = create_lstm_model(lookback_window=DAILY_LOOKBACK, forecast_horizon=DAILY_HORIZON, feature_dim=NUM_CITIES)
     history = lstm_daily.train(X_train, y_train, X_val, y_val, epochs=MAX_EPOCHS, batch_size=BATCH_SIZE)
     lstm_daily.save(os.path.join(train_dir, model_filename("lstm", "daily")))
