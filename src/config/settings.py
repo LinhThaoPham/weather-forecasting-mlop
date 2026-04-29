@@ -53,6 +53,14 @@ HISTORICAL_DAYS = 730  # 2 years
 
 # ── Database ──
 DB_PATH = str(PROJECT_ROOT / "data" / "weather_forecast.db")
+DB_TYPE = os.getenv("DB_TYPE", "sqlite")  # "sqlite" or "postgres"
+
+# ── GCP Settings ──
+GCP_PROJECT_ID = os.getenv("GCP_PROJECT_ID", "")
+GCP_REGION = os.getenv("GCP_REGION", "asia-southeast1")
+GCS_BUCKET = os.getenv("GCS_BUCKET", "")
+USE_GCS = os.getenv("USE_GCS", "false").lower() == "true"
+INSTANCE_CONNECTION_NAME = os.getenv("INSTANCE_CONNECTION_NAME", "")
 
 # ── Column Mapping (Open-Meteo → internal) ──
 COLUMN_MAP = {

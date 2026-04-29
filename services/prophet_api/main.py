@@ -17,26 +17,38 @@ BASE_DIR = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", ".."))
 MODELS_DIR = os.path.join(BASE_DIR, "models", "current")
 
 
+def _load_model_file(filename: str) -> str:
+    """Get model file path — from GCS or local filesystem."""
+    try:
+        from src.config.gcs_storage import download_model
+        return download_model(filename, MODELS_DIR)
+    except (ImportError, FileNotFoundError):
+        local_path = os.path.join(MODELS_DIR, filename)
+        if os.path.exists(local_path):
+            return local_path
+        return ""
+
+
 def _load_models():
-    """Load Prophet models from disk."""
+    """Load Prophet models from GCS or local disk."""
     global prophet_hourly, prophet_daily
 
     try:
-        hourly_path = os.path.join(MODELS_DIR, "prophet_hourly_hà_nội.json")
-        if os.path.exists(hourly_path):
+        hourly_path = _load_model_file("prophet_hourly_hanoi.json")
+        if hourly_path:
             with open(hourly_path, "r", encoding="utf-8") as f:
                 prophet_hourly = model_from_json(json.load(f))
             print("✓ Prophet Hourly model loaded")
         else:
-            print(f"⚠ Prophet Hourly not found at {hourly_path}")
+            print("⚠ Prophet Hourly model not found")
 
-        daily_path = os.path.join(MODELS_DIR, "prophet_daily_hà_nội.json")
-        if os.path.exists(daily_path):
+        daily_path = _load_model_file("prophet_daily_hanoi.json")
+        if daily_path:
             with open(daily_path, "r", encoding="utf-8") as f:
                 prophet_daily = model_from_json(json.load(f))
             print("✓ Prophet Daily model loaded")
         else:
-            print(f"⚠ Prophet Daily not found at {daily_path}")
+            print("⚠ Prophet Daily model not found")
 
     except Exception as e:
         print(f"❌ Error loading Prophet models: {e}")

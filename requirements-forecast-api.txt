@@ -1,0 +1,8 @@
+# Forecast API — orchestrator, no ML libs
+fastapi>=0.100.0
+uvicorn>=0.23.0
+pydantic>=2.0
+pandas>=2.0
+numpy<2.0
+requests>=2.31
+python-dotenv>=1.0

@@ -1,0 +1,36 @@
+# Retrain Pipeline — Cloud Run Job (needs ALL ML libs)
+FROM python:3.11-slim AS builder
+WORKDIR /app
+
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    build-essential \
+    curl \
+    && rm -rf /var/lib/apt/lists/*
+
+COPY requirements.txt .
+COPY requirements-gcp.txt .
+RUN pip install --no-cache-dir --upgrade pip && \
+    pip install --no-cache-dir -r requirements.txt && \
+    pip install --no-cache-dir -r requirements-gcp.txt
+
+FROM python:3.11-slim
+WORKDIR /app
+
+COPY --from=builder /usr/local/lib/python3.11/site-packages /usr/local/lib/python3.11/site-packages
+COPY --from=builder /usr/local/bin /usr/local/bin
+
+COPY src/ ./src/
+COPY services/ ./services/
+COPY daily_pipeline.py .
+
+ENV PYTHONPATH=/app
+ENV PYTHONDONTWRITEBYTECODE=1
+ENV PYTHONUNBUFFERED=1
+ENV TF_CPP_MIN_LOG_LEVEL=2
+
+RUN adduser --disabled-password --gecos '' appuser && \
+    mkdir -p /app/models/current /app/models/archive /app/data && \
+    chown -R appuser:appuser /app
+USER appuser
+
+CMD ["python", "daily_pipeline.py"]

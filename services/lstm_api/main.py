@@ -20,38 +20,50 @@ BASE_DIR = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", ".."))
 MODELS_DIR = os.path.join(BASE_DIR, "models", "current")
 
 
+def _load_model_file(filename: str) -> str:
+    """Get model file path — from GCS or local filesystem."""
+    try:
+        from src.config.gcs_storage import download_model
+        return download_model(filename, MODELS_DIR)
+    except (ImportError, FileNotFoundError):
+        local_path = os.path.join(MODELS_DIR, filename)
+        if os.path.exists(local_path):
+            return local_path
+        return ""
+
+
 def _load_models():
-    """Load LSTM models and scalers from disk."""
+    """Load LSTM models and scalers from GCS or local disk."""
     global lstm_hourly, lstm_daily, scaler_hourly, scaler_daily
 
     try:
         # Load hourly model
-        hourly_path = os.path.join(MODELS_DIR, "lstm_hourly_hà_nội.h5")
-        if os.path.exists(hourly_path):
+        hourly_path = _load_model_file("lstm_hourly_hanoi.h5")
+        if hourly_path:
             lstm_hourly_obj = LSTMWeatherModel(lookback_window=24, forecast_horizon=72)
             lstm_hourly_obj.load(hourly_path)
             lstm_hourly = lstm_hourly_obj.model
 
-            scaler_path = os.path.join(MODELS_DIR, "lstm_hourly_scaler.pkl")
-            if os.path.exists(scaler_path):
+            scaler_path = _load_model_file("lstm_hourly_all_scaler.pkl")
+            if scaler_path:
                 scaler_hourly = joblib.load(scaler_path)
             print("✓ LSTM Hourly model loaded")
         else:
-            print(f"⚠ Hourly model not found at {hourly_path}")
+            print("⚠ LSTM Hourly model not found")
 
         # Load daily model
-        daily_path = os.path.join(MODELS_DIR, "lstm_daily_hà_nội.h5")
-        if os.path.exists(daily_path):
+        daily_path = _load_model_file("lstm_daily_hanoi.h5")
+        if daily_path:
             lstm_daily_obj = LSTMWeatherModel(lookback_window=7, forecast_horizon=7)
             lstm_daily_obj.load(daily_path)
             lstm_daily = lstm_daily_obj.model
 
-            scaler_path = os.path.join(MODELS_DIR, "lstm_daily_scaler.pkl")
-            if os.path.exists(scaler_path):
+            scaler_path = _load_model_file("lstm_daily_all_scaler.pkl")
+            if scaler_path:
                 scaler_daily = joblib.load(scaler_path)
             print("✓ LSTM Daily model loaded")
         else:
-            print(f"⚠ Daily model not found at {daily_path}")
+            print("⚠ LSTM Daily model not found")
 
     except Exception as e:
         print(f"❌ Error loading models: {str(e)}")

@@ -1,0 +1,6 @@
+# GCP-specific dependencies (for Cloud Run deployment)
+google-cloud-storage>=2.14.0
+google-cloud-secret-manager>=2.18.0
+google-cloud-pubsub>=2.19.0
+pg8000>=1.30.0
+cloud-sql-python-connector[pg8000]>=1.7.0

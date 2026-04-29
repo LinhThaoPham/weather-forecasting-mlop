@@ -1,0 +1,12 @@
+# Data API — no ML libs, lightweight
+fastapi>=0.100.0
+uvicorn>=0.23.0
+pydantic>=2.0
+pandas>=2.0
+numpy<2.0
+requests>=2.31
+python-dotenv>=1.0
+google-cloud-storage>=2.14.0
+google-cloud-secret-manager>=2.18.0
+pg8000>=1.30.0
+cloud-sql-python-connector[pg8000]>=1.7.0
