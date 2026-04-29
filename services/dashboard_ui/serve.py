@@ -21,5 +21,5 @@ class DashboardHandler(http.server.SimpleHTTPRequestHandler):
 
 if __name__ == "__main__":
     with socketserver.TCPServer(("0.0.0.0", PORT), DashboardHandler) as httpd:
-        print(f"✓ Dashboard serving at http://0.0.0.0:{PORT}")
+        print(f"[OK] Dashboard serving at http://0.0.0.0:{PORT}")
         httpd.serve_forever()

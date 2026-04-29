@@ -14,6 +14,13 @@ def compute_metrics(y_true: np.ndarray, y_pred: np.ndarray) -> dict:
     y_true = y_true[:min_len]
     y_pred = y_pred[:min_len]
 
+    # Remove NaN/inf pairs
+    valid_mask = np.isfinite(y_true) & np.isfinite(y_pred)
+    if not valid_mask.any():
+        return {"mae": 999.0, "rmse": 999.0, "mape": 999.0}
+    y_true = y_true[valid_mask]
+    y_pred = y_pred[valid_mask]
+
     mae = mean_absolute_error(y_true, y_pred)
     rmse = np.sqrt(mean_squared_error(y_true, y_pred))
 
@@ -95,9 +102,18 @@ def evaluate_lstm_multi_city(model, X_test: np.ndarray, y_test: np.ndarray, scal
         predictions = model.predict(X_test)
         n_features = scaler.n_features_in_
 
+        # Replace NaN in predictions with 0 before inverse_transform
+        if np.isnan(predictions).any():
+            nan_count = int(np.isnan(predictions).sum())
+            print(f"  ⚠ {nan_count} NaN values in LSTM predictions, replacing with 0")
+            predictions = np.nan_to_num(predictions, nan=0.0)
+
         # Reshape to 2D for scaler: (N * horizon, n_cities)
         y_true_2d = y_test.reshape(-1, n_features)
         y_pred_2d = predictions.reshape(-1, n_features)
+
+        # Also guard y_true
+        y_true_2d = np.nan_to_num(y_true_2d, nan=0.0)
 
         y_true_real = scaler.inverse_transform(y_true_2d).flatten()
         y_pred_real = scaler.inverse_transform(y_pred_2d).flatten()
