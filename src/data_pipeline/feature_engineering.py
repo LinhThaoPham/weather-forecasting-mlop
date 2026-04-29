@@ -82,7 +82,8 @@ def build_multi_city_hourly() -> tuple[pd.DataFrame, list[str]]:
     # Pivot: rows=timestamps, columns=cities
     df_pivot = df.pivot(index="timestamp", columns="city_id", values="temperature")
     df_pivot = df_pivot[city_ids]  # enforce consistent column order
-    df_pivot = df_pivot.dropna()   # drop hours with missing cities
+    df_pivot = df_pivot.ffill().bfill()  # fill gaps before dropping
+    df_pivot = df_pivot.dropna()   # drop remaining incomplete rows
     df_pivot = df_pivot.sort_index()
 
     print(f"  📊 Multi-city hourly matrix: {df_pivot.shape[0]} hours × {df_pivot.shape[1]} cities")
@@ -120,7 +121,8 @@ def build_multi_city_daily() -> tuple[pd.DataFrame, list[str]]:
     # Pivot: rows=dates, columns=cities
     df_pivot = df.pivot(index="date", columns="city_id", values="temp_avg")
     df_pivot = df_pivot[city_ids]  # enforce consistent column order
-    df_pivot = df_pivot.dropna()   # drop days with missing cities
+    df_pivot = df_pivot.ffill().bfill()  # fill gaps before dropping
+    df_pivot = df_pivot.dropna()   # drop remaining incomplete rows
     df_pivot = df_pivot.sort_index()
 
     print(f"  📊 Multi-city daily matrix: {df_pivot.shape[0]} days × {df_pivot.shape[1]} cities")
@@ -137,8 +139,14 @@ def normalize_multi_city(
 
     Uses one scaler that normalizes across all cities together.
     """
+    if np.isnan(data).any():
+        print(f"  ⚠ NaN detected in input ({np.isnan(data).sum()} values), replacing with column mean")
+        col_means = np.nanmean(data, axis=0)
+        for col in range(data.shape[1]):
+            mask = np.isnan(data[:, col])
+            data[mask, col] = col_means[col]
     scaler = MinMaxScaler(feature_range=(0, 1))
-    normalized = scaler.fit_transform(data)  # (N, 6) → (N, 6)
+    normalized = scaler.fit_transform(data)  # (N, num_cities) → (N, num_cities)
     return normalized, scaler
 
 

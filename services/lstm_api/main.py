@@ -26,7 +26,7 @@ def _load_models():
 
     try:
         # Load hourly model
-        hourly_path = os.path.join(MODELS_DIR, "lstm_hourly_hà_nội.h5")
+        hourly_path = os.path.join(MODELS_DIR, "lstm_hourly_hanoi.h5")
         if os.path.exists(hourly_path):
             lstm_hourly_obj = LSTMWeatherModel(lookback_window=24, forecast_horizon=72)
             lstm_hourly_obj.load(hourly_path)
@@ -35,12 +35,12 @@ def _load_models():
             scaler_path = os.path.join(MODELS_DIR, "lstm_hourly_scaler.pkl")
             if os.path.exists(scaler_path):
                 scaler_hourly = joblib.load(scaler_path)
-            print("✓ LSTM Hourly model loaded")
+            print("[OK] LSTM Hourly model loaded")
         else:
-            print(f"⚠ Hourly model not found at {hourly_path}")
+            print(f"[WARN] Hourly model not found at {hourly_path}")
 
         # Load daily model
-        daily_path = os.path.join(MODELS_DIR, "lstm_daily_hà_nội.h5")
+        daily_path = os.path.join(MODELS_DIR, "lstm_daily_hanoi.h5")
         if os.path.exists(daily_path):
             lstm_daily_obj = LSTMWeatherModel(lookback_window=7, forecast_horizon=7)
             lstm_daily_obj.load(daily_path)
@@ -49,12 +49,12 @@ def _load_models():
             scaler_path = os.path.join(MODELS_DIR, "lstm_daily_scaler.pkl")
             if os.path.exists(scaler_path):
                 scaler_daily = joblib.load(scaler_path)
-            print("✓ LSTM Daily model loaded")
+            print("[OK] LSTM Daily model loaded")
         else:
-            print(f"⚠ Daily model not found at {daily_path}")
+            print(f"[WARN] Daily model not found at {daily_path}")
 
     except Exception as e:
-        print(f"❌ Error loading models: {str(e)}")
+        print(f"[ERROR] Error loading models: {str(e)}")
 
 
 @asynccontextmanager
