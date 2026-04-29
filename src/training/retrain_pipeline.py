@@ -211,6 +211,8 @@ def train_lstm_models(weather_data, train_dir: str) -> dict:
     metrics = {}
 
     # ── Hourly (single-city, backward compatible) ──
+    if weather_data is None:
+        weather_data = fetch_training_data(DEFAULT_CITY)
     hourly_normalized, hourly_scaler = normalize_data(weather_data["y"].values)
     hourly_inputs, hourly_targets = sliding_window(hourly_normalized, HOURLY_LOOKBACK, HOURLY_HORIZON)
     hourly_inputs = hourly_inputs.reshape((hourly_inputs.shape[0], hourly_inputs.shape[1], 1))
