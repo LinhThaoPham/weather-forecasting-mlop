@@ -105,6 +105,7 @@ jobs:
             fi
             
             git commit -m "$COMMIT_MSG"
+            git pull --rebase origin main
             git push
             echo "✅ Changes committed and pushed!"
           fi
