@@ -13,11 +13,8 @@ let forecastChart = null;
 // City display names
 const CITY_NAMES = {
   hanoi: "Hà Nội",
-  hcm: "TP. Hồ Chí Minh",
   danang: "Đà Nẵng",
-  haiphong: "Hải Phòng",
-  nhatrang: "Nha Trang",
-  dalat: "Đà Lạt"
+  hcm: "TP. Hồ Chí Minh"
 };
 
 // OWM Weather Code → icon + description (Vietnamese)
@@ -107,7 +104,7 @@ async function loadForecast(city, mode) {
       city: city,
       mode: mode,
       hours: mode === "hourly" ? 72 : 72,
-      days: 7
+      days: 3
     };
 
     const res = await fetch(`${FORECAST_API}/predict`, {
@@ -224,7 +221,7 @@ function renderChart(data, mode) {
           ticks: {
             color: "#707785",
             font: { family: "Manrope", size: 11 },
-            maxTicksLimit: mode === "hourly" ? 12 : 7,
+            maxTicksLimit: mode === "hourly" ? 12 : 3,
             maxRotation: 45,
           },
           grid: { display: false }
@@ -248,7 +245,7 @@ function setActiveMode(mode) {
   } else {
     btnDaily.className = "px-4 py-1.5 rounded-full text-sm font-semibold bg-primary text-on-primary transition-all hover:opacity-90";
     btnHourly.className = "px-4 py-1.5 rounded-full text-sm font-semibold bg-surface-container-high text-on-surface-variant transition-all hover:bg-surface-dim";
-    document.getElementById("chartTitle").textContent = "Nhiệt độ trung bình theo ngày";
+    document.getElementById("chartTitle").textContent = "Nhiệt độ trung bình 3 ngày tới";
   }
 }
 

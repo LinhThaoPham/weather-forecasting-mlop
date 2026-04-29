@@ -21,7 +21,7 @@ NUM_CITIES = 3  # feature_dim for multi-city LSTM
 HOURLY_LOOKBACK = 24
 HOURLY_HORIZON = 72
 DAILY_LOOKBACK = 90    # 90 days lookback (multi-city, ~634 samples)
-DAILY_HORIZON = 7
+DAILY_HORIZON = 3
 
 # Training
 TRAIN_SPLIT_RATIO = 0.8
