@@ -1,11 +1,102 @@
 {
-  "current_version": "v_initial",
+  "current_version": "v_2026-04-29",
   "models": [
     {
       "version": "v_initial",
       "trained_at": "2026-04-25T00:00:00+07:00",
       "data_range": "initial training",
       "metrics": {},
+      "status": "active",
+      "decision": "accept"
+    },
+    {
+      "version": "v_2026-04-29",
+      "trained_at": "2026-04-29T14:12:14.018266",
+      "data_range": "2024-04-29 -> 2026-04-29",
+      "metrics": {
+        "prophet_hourly_dalat": {
+          "mae": 2.6801,
+          "rmse": 3.1673,
+          "mape": 14.56
+        },
+        "prophet_daily_dalat": {
+          "mae": 1.8736,
+          "rmse": 2.683,
+          "mape": 12.35
+        },
+        "prophet_hourly_danang": {
+          "mae": 4.8963,
+          "rmse": 5.2823,
+          "mape": 20.11
+        },
+        "prophet_daily_danang": {
+          "mae": 5.2378,
+          "rmse": 5.6069,
+          "mape": 21.51
+        },
+        "prophet_hourly_haiphong": {
+          "mae": 6.8701,
+          "rmse": 7.4837,
+          "mape": 31.0
+        },
+        "prophet_daily_haiphong": {
+          "mae": 6.8344,
+          "rmse": 7.5166,
+          "mape": 30.77
+        },
+        "prophet_hourly_hanoi": {
+          "mae": 7.6168,
+          "rmse": 8.3796,
+          "mape": 34.05
+        },
+        "prophet_daily_hanoi": {
+          "mae": 6.7473,
+          "rmse": 7.5576,
+          "mape": 30.19
+        },
+        "prophet_hourly_hcm": {
+          "mae": 4.6991,
+          "rmse": 5.0263,
+          "mape": 16.83
+        },
+        "prophet_daily_hcm": {
+          "mae": 3.6589,
+          "rmse": 3.9012,
+          "mape": 13.23
+        },
+        "prophet_hourly_nhatrang": {
+          "mae": 2.5442,
+          "rmse": 2.8105,
+          "mape": 10.0
+        },
+        "prophet_daily_nhatrang": {
+          "mae": 2.9082,
+          "rmse": 3.2654,
+          "mape": 11.35
+        },
+        "lstm_hourly": {
+          "mae": 1.439,
+          "rmse": 2.0137,
+          "mape": 6.52,
+          "val_loss": 0.006512,
+          "city_ids": [
+            "danang",
+            "hanoi",
+            "hcm"
+          ]
+        },
+        "lstm_daily": {
+          "mae": Infinity,
+          "rmse": Infinity,
+          "mape": Infinity,
+          "val_loss": NaN,
+          "city_ids": [
+            "danang",
+            "hanoi",
+            "hcm"
+          ]
+        }
+      },
       "status": "active",
       "decision": "accept"
     }
