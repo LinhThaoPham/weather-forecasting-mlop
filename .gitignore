@@ -1,0 +1,33 @@
+# Virtual environments
+.venv/
+venv/
+env/
+
+# Python cache
+__pycache__/
+*.py[cod]
+*$py.class
+*.egg-info/
+dist/
+build/
+
+# Environment secrets
+.env
+
+# IDE
+.vscode/
+.idea/
+
+# OS
+Thumbs.db
+.DS_Store
+
+# Agent config (local only)
+.agent/
+
+# SQLite WAL/SHM (transient)
+*.db-wal
+*.db-shm
+
+# Gemini/Antigravity local
+.gemini/
