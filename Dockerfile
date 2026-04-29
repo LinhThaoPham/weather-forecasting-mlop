@@ -1,32 +1,39 @@
-# Sử dụng Python 3.10 slim để image nhẹ và an toàn
-FROM python:3.10-slim
+# Universal Dockerfile for all Weather MLOps services
+# Deploy different services via --command flag on Cloud Run
+FROM python:3.11-slim
 
 ENV PYTHONDONTWRITEBYTECODE=1
 ENV PYTHONUNBUFFERED=1
+ENV PYTHONPATH=/app
+ENV PORT=8080
 
 WORKDIR /app
 
-# Cài đặt thư viện hệ thống cần thiết
+# Install system deps
 RUN apt-get update && apt-get install -y --no-install-recommends \
     build-essential \
     curl \
     && rm -rf /var/lib/apt/lists/*
 
-# Copy requirements trước để tận dụng cache layer
+# Install Python deps
 COPY requirements.txt .
-
 RUN pip install --no-cache-dir --upgrade pip && \
     pip install --no-cache-dir -r requirements.txt
 
-# Copy toàn bộ mã nguồn
-COPY . .
+# Copy source
+COPY src/ ./src/
+COPY services/ ./services/
+COPY daily_pipeline.py .
 
-# PYTHONPATH để Python nhận diện src/ và services/
-ENV PYTHONPATH=/app
+# Create dirs for models and data
+RUN mkdir -p /app/models/current /app/models/archive /app/data
 
-# Non-root user cho security
+# Non-root user
 RUN adduser --disabled-password --gecos '' appuser && \
     chown -R appuser:appuser /app
 USER appuser
 
-CMD ["python", "--version"]
+EXPOSE 8080
+
+# Default: Forecast API (overridden per service)
+CMD ["uvicorn", "services.forecast_api.main:app", "--host", "0.0.0.0", "--port", "8080"]

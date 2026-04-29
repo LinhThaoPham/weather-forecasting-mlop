@@ -1,94 +1,53 @@
 # Cloud Build — Build & Deploy all services to Cloud Run
-# Trigger: Push to main branch
-#
-# Usage:
-#   gcloud builds submit --config deploy/cloudbuild.yaml \
-#     --substitutions=_REGION=asia-southeast1
+# Usage: gcloud builds submit --config deploy/cloudbuild.yaml
 
 substitutions:
   _REGION: asia-southeast1
+  _TAG: latest
 
 steps:
-  # ── Build Docker Images ──
+  # ── Build Docker Images (parallel) ──
 
   - id: 'build-data-api'
     name: 'gcr.io/cloud-builders/docker'
-    args:
-      - 'build'
-      - '-t'
-      - '${_REGION}-docker.pkg.dev/$PROJECT_ID/weather/data-api:$COMMIT_SHA'
-      - '-t'
-      - '${_REGION}-docker.pkg.dev/$PROJECT_ID/weather/data-api:latest'
-      - '-f'
-      - 'deploy/Dockerfile.data-api'
-      - '.'
+    args: ['build', '-t', '${_REGION}-docker.pkg.dev/$PROJECT_ID/weather/data-api:${_TAG}', '-f', 'deploy/Dockerfile.data-api', '.']
 
   - id: 'build-forecast-api'
     name: 'gcr.io/cloud-builders/docker'
-    args:
-      - 'build'
-      - '-t'
-      - '${_REGION}-docker.pkg.dev/$PROJECT_ID/weather/forecast-api:$COMMIT_SHA'
-      - '-t'
-      - '${_REGION}-docker.pkg.dev/$PROJECT_ID/weather/forecast-api:latest'
-      - '-f'
-      - 'deploy/Dockerfile.forecast-api'
-      - '.'
+    args: ['build', '-t', '${_REGION}-docker.pkg.dev/$PROJECT_ID/weather/forecast-api:${_TAG}', '-f', 'deploy/Dockerfile.forecast-api', '.']
+    waitFor: ['-']
 
   - id: 'build-prophet-api'
     name: 'gcr.io/cloud-builders/docker'
-    args:
-      - 'build'
-      - '-t'
-      - '${_REGION}-docker.pkg.dev/$PROJECT_ID/weather/prophet-api:$COMMIT_SHA'
-      - '-t'
-      - '${_REGION}-docker.pkg.dev/$PROJECT_ID/weather/prophet-api:latest'
-      - '-f'
-      - 'deploy/Dockerfile.prophet-api'
-      - '.'
+    args: ['build', '-t', '${_REGION}-docker.pkg.dev/$PROJECT_ID/weather/prophet-api:${_TAG}', '-f', 'deploy/Dockerfile.prophet-api', '.']
+    waitFor: ['-']
 
   - id: 'build-lstm-api'
     name: 'gcr.io/cloud-builders/docker'
-    args:
-      - 'build'
-      - '-t'
-      - '${_REGION}-docker.pkg.dev/$PROJECT_ID/weather/lstm-api:$COMMIT_SHA'
-      - '-t'
-      - '${_REGION}-docker.pkg.dev/$PROJECT_ID/weather/lstm-api:latest'
-      - '-f'
-      - 'deploy/Dockerfile.lstm-api'
-      - '.'
-
-  - id: 'build-retrain'
-    name: 'gcr.io/cloud-builders/docker'
-    args:
-      - 'build'
-      - '-t'
-      - '${_REGION}-docker.pkg.dev/$PROJECT_ID/weather/retrain:$COMMIT_SHA'
-      - '-t'
-      - '${_REGION}-docker.pkg.dev/$PROJECT_ID/weather/retrain:latest'
-      - '-f'
-      - 'deploy/Dockerfile.retrain'
-      - '.'
+    args: ['build', '-t', '${_REGION}-docker.pkg.dev/$PROJECT_ID/weather/lstm-api:${_TAG}', '-f', 'deploy/Dockerfile.lstm-api', '.']
+    waitFor: ['-']
 
   # ── Push Images ──
 
-  - id: 'push-images'
+  - id: 'push-data-api'
     name: 'gcr.io/cloud-builders/docker'
-    entrypoint: 'bash'
-    args:
-      - '-c'
-      - |
-        docker push ${_REGION}-docker.pkg.dev/$PROJECT_ID/weather/data-api:$COMMIT_SHA
-        docker push ${_REGION}-docker.pkg.dev/$PROJECT_ID/weather/data-api:latest
-        docker push ${_REGION}-docker.pkg.dev/$PROJECT_ID/weather/forecast-api:$COMMIT_SHA
-        docker push ${_REGION}-docker.pkg.dev/$PROJECT_ID/weather/forecast-api:latest
-        docker push ${_REGION}-docker.pkg.dev/$PROJECT_ID/weather/prophet-api:$COMMIT_SHA
-        docker push ${_REGION}-docker.pkg.dev/$PROJECT_ID/weather/prophet-api:latest
-        docker push ${_REGION}-docker.pkg.dev/$PROJECT_ID/weather/lstm-api:$COMMIT_SHA
-        docker push ${_REGION}-docker.pkg.dev/$PROJECT_ID/weather/lstm-api:latest
-        docker push ${_REGION}-docker.pkg.dev/$PROJECT_ID/weather/retrain:$COMMIT_SHA
-        docker push ${_REGION}-docker.pkg.dev/$PROJECT_ID/weather/retrain:latest
+    args: ['push', '${_REGION}-docker.pkg.dev/$PROJECT_ID/weather/data-api:${_TAG}']
+    waitFor: ['build-data-api']
+
+  - id: 'push-forecast-api'
+    name: 'gcr.io/cloud-builders/docker'
+    args: ['push', '${_REGION}-docker.pkg.dev/$PROJECT_ID/weather/forecast-api:${_TAG}']
+    waitFor: ['build-forecast-api']
+
+  - id: 'push-prophet-api'
+    name: 'gcr.io/cloud-builders/docker'
+    args: ['push', '${_REGION}-docker.pkg.dev/$PROJECT_ID/weather/prophet-api:${_TAG}']
+    waitFor: ['build-prophet-api']
+
+  - id: 'push-lstm-api'
+    name: 'gcr.io/cloud-builders/docker'
+    args: ['push', '${_REGION}-docker.pkg.dev/$PROJECT_ID/weather/lstm-api:${_TAG}']
+    waitFor: ['build-lstm-api']
 
   # ── Deploy to Cloud Run ──
 
@@ -99,19 +58,18 @@ steps:
       - 'run'
       - 'deploy'
       - 'data-api'
-      - '--image=${_REGION}-docker.pkg.dev/$PROJECT_ID/weather/data-api:$COMMIT_SHA'
+      - '--image=${_REGION}-docker.pkg.dev/$PROJECT_ID/weather/data-api:${_TAG}'
       - '--region=${_REGION}'
       - '--platform=managed'
       - '--allow-unauthenticated'
       - '--memory=512Mi'
       - '--cpu=1'
-      - '--min-instances=1'
-      - '--max-instances=50'
+      - '--min-instances=0'
+      - '--max-instances=10'
       - '--concurrency=80'
       - '--cpu-boost'
-      - '--set-env-vars=DB_TYPE=postgres'
-      - '--update-secrets=DB_USER=db-user:latest,DB_PASS=db-password:latest,DB_NAME=db-name:latest,INSTANCE_CONNECTION_NAME=db-instance:latest,OPENWEATHER_API_KEY=owm-api-key:latest'
-      - '--add-cloudsql-instances=$(gcloud secrets versions access latest --secret=db-instance)'
+      - '--set-env-vars=DB_TYPE=sqlite,PYTHONPATH=/app'
+    waitFor: ['push-data-api']
 
   - id: 'deploy-forecast-api'
     name: 'gcr.io/google.com/cloudsdktool/cloud-sdk'
@@ -120,17 +78,18 @@ steps:
       - 'run'
       - 'deploy'
       - 'forecast-api'
-      - '--image=${_REGION}-docker.pkg.dev/$PROJECT_ID/weather/forecast-api:$COMMIT_SHA'
+      - '--image=${_REGION}-docker.pkg.dev/$PROJECT_ID/weather/forecast-api:${_TAG}'
       - '--region=${_REGION}'
       - '--platform=managed'
       - '--allow-unauthenticated'
       - '--memory=512Mi'
       - '--cpu=1'
-      - '--min-instances=1'
-      - '--max-instances=50'
+      - '--min-instances=0'
+      - '--max-instances=10'
       - '--concurrency=80'
       - '--cpu-boost'
-      - '--update-secrets=OPENWEATHER_API_KEY=owm-api-key:latest'
+      - '--set-env-vars=PYTHONPATH=/app'
+    waitFor: ['push-forecast-api']
 
   - id: 'deploy-prophet-api'
     name: 'gcr.io/google.com/cloudsdktool/cloud-sdk'
@@ -139,17 +98,18 @@ steps:
       - 'run'
       - 'deploy'
       - 'prophet-api'
-      - '--image=${_REGION}-docker.pkg.dev/$PROJECT_ID/weather/prophet-api:$COMMIT_SHA'
+      - '--image=${_REGION}-docker.pkg.dev/$PROJECT_ID/weather/prophet-api:${_TAG}'
       - '--region=${_REGION}'
       - '--platform=managed'
-      - '--no-allow-unauthenticated'
+      - '--allow-unauthenticated'
       - '--memory=1Gi'
       - '--cpu=2'
-      - '--min-instances=1'
-      - '--max-instances=20'
+      - '--min-instances=0'
+      - '--max-instances=5'
       - '--concurrency=10'
       - '--cpu-boost'
-      - '--set-env-vars=USE_GCS=true,GCS_BUCKET=weather-models-${PROJECT_ID}'
+      - '--set-env-vars=USE_GCS=false,PYTHONPATH=/app'
+    waitFor: ['push-prophet-api']
 
   - id: 'deploy-lstm-api'
     name: 'gcr.io/google.com/cloudsdktool/cloud-sdk'
@@ -158,27 +118,27 @@ steps:
       - 'run'
       - 'deploy'
       - 'lstm-api'
-      - '--image=${_REGION}-docker.pkg.dev/$PROJECT_ID/weather/lstm-api:$COMMIT_SHA'
+      - '--image=${_REGION}-docker.pkg.dev/$PROJECT_ID/weather/lstm-api:${_TAG}'
       - '--region=${_REGION}'
       - '--platform=managed'
-      - '--no-allow-unauthenticated'
+      - '--allow-unauthenticated'
       - '--memory=2Gi'
       - '--cpu=2'
-      - '--min-instances=1'
-      - '--max-instances=10'
+      - '--min-instances=0'
+      - '--max-instances=5'
       - '--concurrency=4'
       - '--cpu-boost'
-      - '--set-env-vars=USE_GCS=true,GCS_BUCKET=weather-models-${PROJECT_ID}'
+      - '--set-env-vars=USE_GCS=false,PYTHONPATH=/app'
+    waitFor: ['push-lstm-api']
 
 images:
-  - '${_REGION}-docker.pkg.dev/$PROJECT_ID/weather/data-api:$COMMIT_SHA'
-  - '${_REGION}-docker.pkg.dev/$PROJECT_ID/weather/forecast-api:$COMMIT_SHA'
-  - '${_REGION}-docker.pkg.dev/$PROJECT_ID/weather/prophet-api:$COMMIT_SHA'
-  - '${_REGION}-docker.pkg.dev/$PROJECT_ID/weather/lstm-api:$COMMIT_SHA'
-  - '${_REGION}-docker.pkg.dev/$PROJECT_ID/weather/retrain:$COMMIT_SHA'
+  - '${_REGION}-docker.pkg.dev/$PROJECT_ID/weather/data-api:${_TAG}'
+  - '${_REGION}-docker.pkg.dev/$PROJECT_ID/weather/forecast-api:${_TAG}'
+  - '${_REGION}-docker.pkg.dev/$PROJECT_ID/weather/prophet-api:${_TAG}'
+  - '${_REGION}-docker.pkg.dev/$PROJECT_ID/weather/lstm-api:${_TAG}'
 
-timeout: '1800s'  # 30 minutes max build time
+timeout: '2400s'
 
 options:
   logging: CLOUD_LOGGING_ONLY
-  machineType: 'E2_HIGHCPU_8'  # Faster builds
+  machineType: 'E2_HIGHCPU_8'
