@@ -1,0 +1,33 @@
+# Python
+__pycache__/
+*.pyc
+*.pyo
+*.egg-info/
+dist/
+build/
+
+# Virtual environments
+.venv/
+venv/
+venv_new/
+
+# Environment
+.env
+
+# Agent config
+.agent/
+
+# Notebooks
+notebook/
+*.ipynb
+
+# IDE
+.vscode/
+.idea/
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Models archive (keep current only in Docker)
+models/archive/

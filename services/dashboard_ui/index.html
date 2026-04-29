@@ -1,0 +1,245 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+  <meta charset="utf-8"/>
+  <meta content="width=device-width, initial-scale=1.0" name="viewport"/>
+  <title>Atmospheric Weather Dashboard - Việt Nam</title>
+  <meta name="description" content="Dự báo thời tiết thông minh Việt Nam - Hybrid Prophet + LSTM Ensemble">
+  <script src="https://cdn.tailwindcss.com?plugins=forms,container-queries"></script>
+  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+  <link href="https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;600;700;800&display=swap" rel="stylesheet"/>
+  <link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&display=swap" rel="stylesheet"/>
+  <script>
+    tailwind.config = {
+      theme: {
+        extend: {
+          colors: {
+            "primary": "#005da7",
+            "primary-container": "#0076d1",
+            "on-primary": "#ffffff",
+            "secondary": "#006398",
+            "secondary-container": "#6cbdfe",
+            "tertiary": "#944600",
+            "tertiary-container": "#ba5900",
+            "surface": "#f7f9fb",
+            "surface-dim": "#d8dadc",
+            "surface-container": "#eceef0",
+            "surface-container-low": "#f2f4f6",
+            "surface-container-high": "#e6e8ea",
+            "on-surface": "#191c1e",
+            "on-surface-variant": "#404753",
+            "outline": "#707785",
+            "outline-variant": "#c0c7d5",
+            "error": "#ba1a1a",
+          },
+          fontFamily: {
+            headline: ["Manrope", "sans-serif"],
+            body: ["Manrope", "sans-serif"],
+          },
+        },
+      },
+    }
+  </script>
+  <style>
+    body {
+      font-family: "Manrope", sans-serif;
+      background-color: #f7f9fb;
+      background-image: linear-gradient(135deg, rgba(255,255,255,0.8) 0%, rgba(247,249,251,0.9) 100%);
+      background-size: cover;
+      background-attachment: fixed;
+    }
+    .glass-panel {
+      background-color: rgba(255, 255, 255, 0.6);
+      backdrop-filter: blur(32px);
+      -webkit-backdrop-filter: blur(32px);
+    }
+    .ambient-shadow {
+      box-shadow: 0 20px 40px -10px rgba(0, 93, 167, 0.05);
+    }
+    .weather-icon-pulse {
+      animation: iconPulse 3s ease-in-out infinite;
+    }
+    @keyframes iconPulse {
+      0%, 100% { transform: scale(1); opacity: 0.9; }
+      50% { transform: scale(1.08); opacity: 1; }
+    }
+    .fade-in {
+      animation: fadeIn 0.5s ease-out;
+    }
+    @keyframes fadeIn {
+      from { opacity: 0; transform: translateY(10px); }
+      to { opacity: 1; transform: translateY(0); }
+    }
+    .loading-skeleton {
+      background: linear-gradient(90deg, #e6e8ea 25%, #f2f4f6 50%, #e6e8ea 75%);
+      background-size: 200% 100%;
+      animation: shimmer 1.5s infinite;
+    }
+    @keyframes shimmer {
+      0% { background-position: 200% 0; }
+      100% { background-position: -200% 0; }
+    }
+  </style>
+</head>
+
+<body class="text-on-surface antialiased min-h-screen">
+
+<!-- SideNavBar -->
+<nav class="h-screen w-64 fixed left-0 top-0 z-40 bg-slate-50/80 backdrop-blur-3xl shadow-[40px_0_60px_-15px_rgba(0,93,167,0.05)] border-r border-slate-100/50 hidden md:flex flex-col py-8 space-y-8">
+  <div class="px-6">
+    <h1 class="text-2xl font-extrabold text-blue-900 tracking-tighter">Atmospheric</h1>
+    <p class="text-sm tracking-tight text-slate-500">Prophet + LSTM Ensemble</p>
+  </div>
+
+  <!-- City Selector -->
+  <div class="px-6">
+    <label class="text-xs font-semibold text-slate-400 uppercase tracking-wider mb-2 block">Thành phố</label>
+    <select id="locationSelect" class="w-full bg-white border border-slate-200 text-on-surface px-4 py-2.5 rounded-xl focus:outline-none focus:ring-2 focus:ring-primary/30 focus:border-primary transition-all text-sm font-medium">
+      <option value="hanoi">🏛️ Hà Nội</option>
+      <option value="hcm">🌇 TP. Hồ Chí Minh</option>
+      <option value="danang">🏖️ Đà Nẵng</option>
+      <option value="haiphong">⚓ Hải Phòng</option>
+      <option value="nhatrang">🌊 Nha Trang</option>
+      <option value="dalat">🌸 Đà Lạt</option>
+    </select>
+  </div>
+
+  <ul class="flex flex-col space-y-1 flex-grow px-3">
+    <li>
+      <button id="nav-dashboard" class="w-full flex items-center space-x-3 text-blue-700 font-bold border-r-4 border-blue-600 py-3 px-3 hover:bg-blue-50/50 rounded-l-xl transition-all">
+        <span class="material-symbols-outlined">dashboard</span>
+        <span>Dashboard</span>
+      </button>
+    </li>
+    <li>
+      <button id="nav-hourly" class="w-full flex items-center space-x-3 text-slate-500 py-3 px-3 hover:bg-blue-50/50 hover:text-blue-800 rounded-xl transition-all">
+        <span class="material-symbols-outlined">schedule</span>
+        <span>Theo giờ (72h)</span>
+      </button>
+    </li>
+    <li>
+      <button id="nav-daily" class="w-full flex items-center space-x-3 text-slate-500 py-3 px-3 hover:bg-blue-50/50 hover:text-blue-800 rounded-xl transition-all">
+        <span class="material-symbols-outlined">calendar_month</span>
+        <span>Theo ngày (7d)</span>
+      </button>
+    </li>
+  </ul>
+
+  <div class="px-6 mt-auto">
+    <div class="bg-blue-50 rounded-2xl p-4 text-center">
+      <p class="text-xs text-blue-600 font-semibold">Model Status</p>
+      <p id="modelStatus" class="text-xs text-slate-500 mt-1">Đang kết nối...</p>
+    </div>
+  </div>
+</nav>
+
+<!-- Main Content -->
+<div class="md:ml-64 min-h-screen flex flex-col">
+
+  <!-- TopAppBar -->
+  <header class="w-full sticky top-0 z-30 bg-white/60 backdrop-blur-xl border-b border-slate-100/50 flex justify-between items-center px-6 md:px-12 py-4">
+    <div class="flex items-center space-x-3">
+      <span class="material-symbols-outlined text-primary text-2xl">cloud</span>
+      <h2 class="text-lg font-bold text-on-surface" id="headerCityName">Hà Nội</h2>
+      <span class="text-sm text-outline" id="headerTimestamp">--</span>
+    </div>
+    <div class="flex items-center space-x-2">
+      <span class="text-xs bg-green-100 text-green-700 px-3 py-1 rounded-full font-semibold" id="apiStatusBadge">● Live</span>
+    </div>
+  </header>
+
+  <!-- Dashboard Canvas -->
+  <main class="flex-grow p-6 md:p-10 space-y-8">
+
+    <!-- Hero: Current Weather -->
+    <section id="heroSection" class="glass-panel rounded-3xl p-8 md:p-12 ambient-shadow relative overflow-hidden flex flex-col md:flex-row items-center justify-between fade-in">
+      <div class="z-10 relative space-y-2">
+        <h2 class="text-on-surface-variant font-medium tracking-wide" id="heroCityName">Hà Nội, VN</h2>
+        <div class="flex items-baseline space-x-4">
+          <span class="text-[5rem] md:text-[7rem] font-bold text-primary leading-none tracking-tighter" id="heroTemp">--°</span>
+          <span class="text-2xl text-secondary-container font-medium" id="heroWeatherDesc">Đang tải...</span>
+        </div>
+        <div class="flex space-x-6 mt-4">
+          <p class="text-sm text-outline" id="heroHumidity">💧 Độ ẩm: --%</p>
+          <p class="text-sm text-outline" id="heroWind">💨 Gió: -- km/h</p>
+          <p class="text-sm text-outline" id="heroCloud">☁️ Mây: --%</p>
+        </div>
+      </div>
+      <div class="z-10 relative mt-8 md:mt-0">
+        <span class="material-symbols-outlined text-[8rem] text-primary weather-icon-pulse" id="heroWeatherIcon" style="font-variation-settings: 'FILL' 1;">cloud</span>
+      </div>
+      <!-- Decorative -->
+      <div class="absolute -top-20 -right-20 w-64 h-64 bg-blue-100 rounded-full mix-blend-multiply filter blur-3xl opacity-50"></div>
+      <div class="absolute -bottom-20 -left-20 w-80 h-80 bg-sky-100 rounded-full mix-blend-multiply filter blur-3xl opacity-30"></div>
+    </section>
+
+    <!-- Data Grid -->
+    <section class="grid grid-cols-1 md:grid-cols-3 gap-8">
+
+      <!-- Chart Area -->
+      <div class="md:col-span-2 glass-panel rounded-3xl p-8 ambient-shadow flex flex-col fade-in">
+        <div class="flex items-center justify-between mb-6">
+          <h3 class="text-lg font-bold text-on-surface" id="chartTitle">Dự báo theo giờ (72h)</h3>
+          <div class="flex space-x-2">
+            <button id="btnHourly" class="px-4 py-1.5 rounded-full text-sm font-semibold bg-primary text-on-primary transition-all hover:opacity-90">Hourly</button>
+            <button id="btnDaily" class="px-4 py-1.5 rounded-full text-sm font-semibold bg-surface-container-high text-on-surface-variant transition-all hover:bg-surface-dim">Daily</button>
+          </div>
+        </div>
+        <div class="flex-grow relative" style="min-height: 320px;">
+          <canvas id="forecastChart"></canvas>
+        </div>
+        <p class="text-xs text-outline mt-4 text-center" id="chartFooter">Ensemble: 0.6×Prophet + 0.4×LSTM</p>
+      </div>
+
+      <!-- Conditions Panel -->
+      <div class="glass-panel rounded-3xl p-8 ambient-shadow space-y-5 flex flex-col fade-in">
+        <h3 class="text-lg font-bold text-on-surface">Điều kiện hiện tại</h3>
+
+        <div class="space-y-3 flex-grow">
+          <div class="flex justify-between items-center bg-surface-container-low/50 p-4 rounded-2xl">
+            <div class="flex items-center space-x-3">
+              <span class="material-symbols-outlined text-secondary">water_drop</span>
+              <span class="font-medium text-on-surface-variant text-sm">Độ ẩm</span>
+            </div>
+            <span class="font-bold text-primary" id="condHumidity">--%</span>
+          </div>
+
+          <div class="flex justify-between items-center bg-surface-container-low/50 p-4 rounded-2xl">
+            <div class="flex items-center space-x-3">
+              <span class="material-symbols-outlined text-secondary">air</span>
+              <span class="font-medium text-on-surface-variant text-sm">Gió</span>
+            </div>
+            <span class="font-bold text-primary" id="condWind">-- km/h</span>
+          </div>
+
+          <div class="flex justify-between items-center bg-surface-container-low/50 p-4 rounded-2xl">
+            <div class="flex items-center space-x-3">
+              <span class="material-symbols-outlined text-secondary">cloud</span>
+              <span class="font-medium text-on-surface-variant text-sm">Mây che phủ</span>
+            </div>
+            <span class="font-bold text-primary" id="condCloud">--%</span>
+          </div>
+
+          <div class="flex justify-between items-center bg-surface-container-low/50 p-4 rounded-2xl">
+            <div class="flex items-center space-x-3">
+              <span class="material-symbols-outlined text-tertiary">thermostat</span>
+              <span class="font-medium text-on-surface-variant text-sm">Nhiệt độ</span>
+            </div>
+            <span class="font-bold text-tertiary" id="condTemp">--°C</span>
+          </div>
+        </div>
+
+        <!-- Model Info -->
+        <div class="border-t border-outline-variant/30 pt-4 mt-auto">
+          <p class="text-xs text-outline text-center">Prophet + LSTM Ensemble</p>
+          <p class="text-xs text-outline text-center" id="predictionInfo">Chờ dữ liệu...</p>
+        </div>
+      </div>
+    </section>
+
+  </main>
+</div>
+
+<script src="script.js"></script>
+</body>
+</html>

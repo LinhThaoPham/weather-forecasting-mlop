@@ -1,0 +1,13 @@
+{
+  "current_version": "v_initial",
+  "models": [
+    {
+      "version": "v_initial",
+      "trained_at": "2026-04-25T00:00:00+07:00",
+      "data_range": "initial training",
+      "metrics": {},
+      "status": "active",
+      "decision": "accept"
+    }
+  ]
+}
