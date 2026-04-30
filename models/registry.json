@@ -99,6 +99,97 @@
       },
       "status": "active",
       "decision": "accept"
+    },
+    {
+      "version": "v_2026-04-30",
+      "trained_at": "2026-04-30T03:50:46.533371",
+      "data_range": "2024-04-30 -> 2026-04-30",
+      "metrics": {
+        "prophet_hourly_dalat": {
+          "mae": 2.6801,
+          "rmse": 3.1673,
+          "mape": 14.56
+        },
+        "prophet_daily_dalat": {
+          "mae": 1.8736,
+          "rmse": 2.683,
+          "mape": 12.35
+        },
+        "prophet_hourly_danang": {
+          "mae": 1.4843,
+          "rmse": 1.7955,
+          "mape": 6.17
+        },
+        "prophet_daily_danang": {
+          "mae": 1.6065,
+          "rmse": 1.8797,
+          "mape": 6.69
+        },
+        "prophet_hourly_haiphong": {
+          "mae": 6.5952,
+          "rmse": 7.2211,
+          "mape": 29.69
+        },
+        "prophet_daily_haiphong": {
+          "mae": 6.0127,
+          "rmse": 6.7139,
+          "mape": 27.09
+        },
+        "prophet_hourly_hanoi": {
+          "mae": 6.1908,
+          "rmse": 6.9552,
+          "mape": 27.7
+        },
+        "prophet_daily_hanoi": {
+          "mae": 6.139,
+          "rmse": 6.9831,
+          "mape": 27.45
+        },
+        "prophet_hourly_hcm": {
+          "mae": 3.9242,
+          "rmse": 4.1978,
+          "mape": 14.04
+        },
+        "prophet_daily_hcm": {
+          "mae": 3.7063,
+          "rmse": 3.9644,
+          "mape": 13.38
+        },
+        "prophet_hourly_nhatrang": {
+          "mae": 1.5874,
+          "rmse": 1.8397,
+          "mape": 6.23
+        },
+        "prophet_daily_nhatrang": {
+          "mae": 2.5186,
+          "rmse": 2.8652,
+          "mape": 9.81
+        },
+        "lstm_hourly": {
+          "mae": 2.4782,
+          "rmse": 3.0887,
+          "mape": 10.42,
+          "val_loss": 0.016376,
+          "city_ids": [
+            "danang",
+            "hanoi",
+            "hcm"
+          ]
+        },
+        "lstm_daily": {
+          "mae": 1.456,
+          "rmse": 1.9703,
+          "mape": 6.34,
+          "val_loss": 0.016047,
+          "city_ids": [
+            "danang",
+            "hanoi",
+            "hcm"
+          ]
+        }
+      },
+      "status": "rejected",
+      "decision": "rollback"
     }
   ]
 }
