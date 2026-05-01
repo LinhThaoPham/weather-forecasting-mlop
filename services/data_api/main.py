@@ -3,6 +3,7 @@
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from contextlib import asynccontextmanager
+import os
 import pandas as pd
 import requests
 from datetime import datetime, timedelta
@@ -255,6 +256,52 @@ def get_forecast(days: int = 3, city: str = "hanoi"):
         return {"error": str(e)}
 
 
+# ============== Model Monitoring ==============
+
+MODELS_DIR = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "..", "models"))
+
+
+def _sanitize_json(obj):
+    """Replace NaN/Infinity with None for JSON compliance."""
+    import math
+    if isinstance(obj, float) and (math.isnan(obj) or math.isinf(obj)):
+        return None
+    if isinstance(obj, dict):
+        return {k: _sanitize_json(v) for k, v in obj.items()}
+    if isinstance(obj, list):
+        return [_sanitize_json(v) for v in obj]
+    return obj
+
+
+@app.get("/model/registry")
+def get_model_registry():
+    """Serve model registry (metrics across versions)."""
+    registry_path = os.path.join(MODELS_DIR, "registry.json")
+    if not os.path.exists(registry_path):
+        return {"error": "registry.json not found"}
+
+    import json
+    with open(registry_path, "r", encoding="utf-8") as f:
+        raw = f.read()
+    # Handle NaN/Infinity in JSON (non-standard but written by Python)
+    raw = raw.replace("Infinity", "null").replace("NaN", "null")
+    data = json.loads(raw)
+    return _sanitize_json(data)
+
+
+@app.get("/model/history")
+def get_training_history():
+    """Serve training history (epoch-level loss curves)."""
+    history_path = os.path.join(MODELS_DIR, "training_history.json")
+    if not os.path.exists(history_path):
+        return {"entries": [], "message": "No training history yet"}
+
+    import json
+    with open(history_path, "r", encoding="utf-8") as f:
+        entries = json.load(f)
+    return {"entries": _sanitize_json(entries)}
+
+
 @app.get("/")
 def root():
     return {
@@ -264,6 +311,8 @@ def root():
             "historical": "/historical?city=hanoi&days=1000",
             "current": "/current?city=hanoi",
             "forecast": "/forecast?city=hanoi&days=3",
+            "model_registry": "/model/registry",
+            "model_history": "/model/history",
             "health": "/health",
         },
     }
@@ -272,3 +321,4 @@ def root():
 if __name__ == "__main__":
     import uvicorn
     uvicorn.run(app, host="0.0.0.0", port=8001)
+

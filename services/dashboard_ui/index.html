@@ -123,6 +123,12 @@
         <span>Theo ngày (7d)</span>
       </button>
     </li>
+    <li>
+      <button id="nav-monitor" class="w-full flex items-center space-x-3 text-slate-500 py-3 px-3 hover:bg-blue-50/50 hover:text-blue-800 rounded-xl transition-all">
+        <span class="material-symbols-outlined">monitoring</span>
+        <span>Model Monitor</span>
+      </button>
+    </li>
   </ul>
 
   <div class="px-6 mt-auto">
@@ -238,6 +244,84 @@
     </section>
 
   </main>
+
+  <!-- Model Monitor Section (hidden by default) -->
+  <section id="modelMonitorSection" class="hidden flex-grow p-6 md:p-10 space-y-8">
+
+    <!-- Monitor Header -->
+    <div class="flex items-center justify-between">
+      <div>
+        <h2 class="text-2xl font-extrabold text-on-surface">📊 Model Monitor</h2>
+        <p class="text-sm text-outline mt-1">Training history & evaluation metrics</p>
+      </div>
+      <div class="flex items-center space-x-3">
+        <select id="versionSelect" class="bg-white border border-slate-200 text-on-surface px-4 py-2 rounded-xl focus:outline-none focus:ring-2 focus:ring-primary/30 text-sm font-medium">
+          <option value="latest">Latest Version</option>
+        </select>
+        <span id="versionStatusBadge" class="text-xs px-3 py-1 rounded-full font-semibold bg-green-100 text-green-700">--</span>
+      </div>
+    </div>
+
+    <!-- Status Cards -->
+    <div class="grid grid-cols-1 md:grid-cols-4 gap-4">
+      <div class="glass-panel rounded-2xl p-5 ambient-shadow text-center">
+        <p class="text-xs text-outline font-semibold uppercase tracking-wider">Version</p>
+        <p class="text-xl font-bold text-primary mt-1" id="monitorVersion">--</p>
+      </div>
+      <div class="glass-panel rounded-2xl p-5 ambient-shadow text-center">
+        <p class="text-xs text-outline font-semibold uppercase tracking-wider">Trained At</p>
+        <p class="text-sm font-bold text-on-surface mt-2" id="monitorTrainedAt">--</p>
+      </div>
+      <div class="glass-panel rounded-2xl p-5 ambient-shadow text-center">
+        <p class="text-xs text-outline font-semibold uppercase tracking-wider">LSTM Hourly MAE</p>
+        <p class="text-xl font-bold text-secondary mt-1" id="monitorLstmHourlyMae">--</p>
+      </div>
+      <div class="glass-panel rounded-2xl p-5 ambient-shadow text-center">
+        <p class="text-xs text-outline font-semibold uppercase tracking-wider">LSTM Daily MAE</p>
+        <p class="text-xl font-bold text-secondary mt-1" id="monitorLstmDailyMae">--</p>
+      </div>
+    </div>
+
+    <!-- Training Loss Charts -->
+    <div class="grid grid-cols-1 md:grid-cols-2 gap-8">
+      <div class="glass-panel rounded-3xl p-8 ambient-shadow">
+        <h3 class="text-lg font-bold text-on-surface mb-4">LSTM Hourly — Loss Curve</h3>
+        <div style="height: 280px;"><canvas id="lossChartHourly"></canvas></div>
+      </div>
+      <div class="glass-panel rounded-3xl p-8 ambient-shadow">
+        <h3 class="text-lg font-bold text-on-surface mb-4">LSTM Daily — Loss Curve</h3>
+        <div style="height: 280px;"><canvas id="lossChartDaily"></canvas></div>
+      </div>
+    </div>
+
+    <!-- Metrics Table -->
+    <div class="glass-panel rounded-3xl p-8 ambient-shadow">
+      <h3 class="text-lg font-bold text-on-surface mb-4">📋 Version Comparison</h3>
+      <div class="overflow-x-auto">
+        <table class="w-full text-sm text-left" id="metricsTable">
+          <thead class="text-xs uppercase text-outline border-b border-outline-variant/30">
+            <tr>
+              <th class="py-3 px-4">Version</th>
+              <th class="py-3 px-4">Date</th>
+              <th class="py-3 px-4">Prophet Hanoi MAE</th>
+              <th class="py-3 px-4">LSTM Hourly MAE</th>
+              <th class="py-3 px-4">LSTM Daily MAE</th>
+              <th class="py-3 px-4">Val Loss (H)</th>
+              <th class="py-3 px-4">Decision</th>
+            </tr>
+          </thead>
+          <tbody id="metricsTableBody"></tbody>
+        </table>
+      </div>
+    </div>
+
+    <!-- Per-City Prophet MAE Chart -->
+    <div class="glass-panel rounded-3xl p-8 ambient-shadow">
+      <h3 class="text-lg font-bold text-on-surface mb-4">📊 Prophet MAE by City (Current Version)</h3>
+      <div style="height: 320px;"><canvas id="cityMaeChart"></canvas></div>
+    </div>
+
+  </section>
 </div>
 
 <script src="script.js"></script>

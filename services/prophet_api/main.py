@@ -9,6 +9,8 @@ import json
 import pandas as pd
 import os
 
+from src.config.constants import DEFAULT_CITY, model_filename
+
 # Models storage
 prophet_hourly = None
 prophet_daily = None
@@ -17,26 +19,55 @@ BASE_DIR = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", ".."))
 MODELS_DIR = os.path.join(BASE_DIR, "models", "current")
 
 
+def _resolve_model_path(mode: str) -> str | None:
+    """Resolve Prophet model path with default city, then fallback to any city artifact."""
+    preferred_name = model_filename("prophet", mode, DEFAULT_CITY)
+    preferred_path = os.path.join(MODELS_DIR, preferred_name)
+    if os.path.exists(preferred_path):
+        return preferred_path
+
+    if not os.path.isdir(MODELS_DIR):
+        return None
+
+    prefix = f"prophet_{mode}_"
+    candidates = sorted(
+        f for f in os.listdir(MODELS_DIR)
+        if f.startswith(prefix) and f.endswith(".json")
+    )
+    if not candidates:
+        return None
+
+    fallback_path = os.path.join(MODELS_DIR, candidates[0])
+    print(
+        f"⚠ Preferred {mode} model '{preferred_name}' not found. "
+        f"Using fallback '{candidates[0]}'."
+    )
+    return fallback_path
+
+
 def _load_models():
     """Load Prophet models from disk."""
     global prophet_hourly, prophet_daily
 
     try:
-        hourly_path = os.path.join(MODELS_DIR, "prophet_hourly_hà_nội.json")
-        if os.path.exists(hourly_path):
+        prophet_hourly = None
+        prophet_daily = None
+
+        hourly_path = _resolve_model_path("hourly")
+        if hourly_path and os.path.exists(hourly_path):
             with open(hourly_path, "r", encoding="utf-8") as f:
                 prophet_hourly = model_from_json(json.load(f))
-            print("✓ Prophet Hourly model loaded")
+            print(f"✓ Prophet Hourly model loaded from {hourly_path}")
         else:
-            print(f"⚠ Prophet Hourly not found at {hourly_path}")
+            print("⚠ Prophet Hourly model not found in models/current")
 
-        daily_path = os.path.join(MODELS_DIR, "prophet_daily_hà_nội.json")
-        if os.path.exists(daily_path):
+        daily_path = _resolve_model_path("daily")
+        if daily_path and os.path.exists(daily_path):
             with open(daily_path, "r", encoding="utf-8") as f:
                 prophet_daily = model_from_json(json.load(f))
-            print("✓ Prophet Daily model loaded")
+            print(f"✓ Prophet Daily model loaded from {daily_path}")
         else:
-            print(f"⚠ Prophet Daily not found at {daily_path}")
+            print("⚠ Prophet Daily model not found in models/current")
 
     except Exception as e:
         print(f"❌ Error loading Prophet models: {e}")

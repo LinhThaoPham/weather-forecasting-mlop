@@ -8,6 +8,7 @@ import os
 import joblib
 from typing import List
 
+from src.config.constants import model_filename, scaler_filename
 from src.models_logic.lstm_model import LSTMWeatherModel
 
 # Models storage
@@ -25,28 +26,28 @@ def _load_models():
     global lstm_hourly, lstm_daily, scaler_hourly, scaler_daily
 
     try:
-        # Load hourly model
-        hourly_path = os.path.join(MODELS_DIR, "lstm_hourly_hanoi.h5")
+        # Load hourly model (multi-city)
+        hourly_path = os.path.join(MODELS_DIR, model_filename("lstm", "hourly"))
         if os.path.exists(hourly_path):
             lstm_hourly_obj = LSTMWeatherModel(lookback_window=24, forecast_horizon=72)
             lstm_hourly_obj.load(hourly_path)
             lstm_hourly = lstm_hourly_obj.model
 
-            scaler_path = os.path.join(MODELS_DIR, "lstm_hourly_scaler.pkl")
+            scaler_path = os.path.join(MODELS_DIR, scaler_filename("hourly"))
             if os.path.exists(scaler_path):
                 scaler_hourly = joblib.load(scaler_path)
             print("[OK] LSTM Hourly model loaded")
         else:
             print(f"[WARN] Hourly model not found at {hourly_path}")
 
-        # Load daily model
-        daily_path = os.path.join(MODELS_DIR, "lstm_daily_hanoi.h5")
+        # Load daily model (multi-city)
+        daily_path = os.path.join(MODELS_DIR, model_filename("lstm", "daily"))
         if os.path.exists(daily_path):
             lstm_daily_obj = LSTMWeatherModel(lookback_window=7, forecast_horizon=7)
             lstm_daily_obj.load(daily_path)
             lstm_daily = lstm_daily_obj.model
 
-            scaler_path = os.path.join(MODELS_DIR, "lstm_daily_scaler.pkl")
+            scaler_path = os.path.join(MODELS_DIR, scaler_filename("daily"))
             if os.path.exists(scaler_path):
                 scaler_daily = joblib.load(scaler_path)
             print("[OK] LSTM Daily model loaded")
