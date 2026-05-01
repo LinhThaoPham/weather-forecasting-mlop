@@ -47,6 +47,7 @@ MODELS_DIR = os.path.join(PROJECT_ROOT, "models")
 CURRENT_DIR = os.path.join(MODELS_DIR, "current")
 ARCHIVE_DIR = os.path.join(MODELS_DIR, "archive")
 REGISTRY_PATH = os.path.join(MODELS_DIR, "registry.json")
+HISTORY_PATH = os.path.join(MODELS_DIR, "training_history.json")
 
 from src.config.settings import LSTM_API_URL, PROPHET_API_URL
 
@@ -88,6 +89,37 @@ def get_current_metrics() -> dict | None:
         if model["version"] == registry.get("current_version"):
             return model.get("metrics", {})
     return None
+
+
+# ===== Training History =====
+
+def _extract_history(keras_history) -> dict:
+    """Extract Keras history into JSON-serializable dict."""
+    return {
+        key: [round(float(v), 6) for v in values]
+        for key, values in keras_history.history.items()
+    }
+
+
+def save_training_history(version_tag: str, history_data: dict) -> None:
+    """Append training history (epoch-level curves) for monitoring."""
+    entries = []
+    if os.path.exists(HISTORY_PATH):
+        try:
+            with open(HISTORY_PATH, "r", encoding="utf-8") as f:
+                entries = json.load(f)
+        except (json.JSONDecodeError, ValueError):
+            entries = []
+
+    entries.append({
+        "version": version_tag,
+        "trained_at": datetime.now().isoformat(),
+        **history_data,
+    })
+
+    with open(HISTORY_PATH, "w", encoding="utf-8") as f:
+        json.dump(entries, f, indent=2, ensure_ascii=False)
+    print(f"📈 Training history saved ({len(entries)} versions)")
 
 
 # ===== Versioning =====
@@ -209,6 +241,7 @@ def train_lstm_models(weather_data, train_dir: str) -> dict:
     from src.training.evaluate import evaluate_lstm_multi_city
 
     metrics = {}
+    history_curves = {}
 
     # ── Hourly Multi-City (6 cities × ~17,520 hours) ──
     print("   📡 Building multi-city hourly tensor from DB...")
@@ -223,14 +256,15 @@ def train_lstm_models(weather_data, train_dir: str) -> dict:
     y_train, y_val = hourly_targets[:split], hourly_targets[split:]
 
     lstm_hourly = create_lstm_model(lookback_window=HOURLY_LOOKBACK, forecast_horizon=HOURLY_HORIZON, feature_dim=NUM_CITIES)
-    history = lstm_hourly.train(X_train, y_train, X_val, y_val, epochs=MAX_EPOCHS, batch_size=BATCH_SIZE)
+    h_history = lstm_hourly.train(X_train, y_train, X_val, y_val, epochs=MAX_EPOCHS, batch_size=BATCH_SIZE)
     lstm_hourly.save(os.path.join(train_dir, model_filename("lstm", "hourly")))
     joblib.dump(hourly_scaler, os.path.join(train_dir, scaler_filename("hourly")))
 
     hourly_metrics = evaluate_lstm_multi_city(lstm_hourly.model, X_val, y_val, hourly_scaler)
-    hourly_metrics["val_loss"] = round(float(history.history["val_loss"][-1]), 6)
+    hourly_metrics["val_loss"] = round(float(h_history.history["val_loss"][-1]), 6)
     hourly_metrics["city_ids"] = city_ids
     metrics["lstm_hourly"] = hourly_metrics
+    history_curves["lstm_hourly"] = _extract_history(h_history)
     print(f"   ✓ LSTM Hourly (Multi-City) — MAE: {hourly_metrics['mae']}°C, Val Loss: {hourly_metrics['val_loss']}")
 
     # ── Daily Multi-City (6 cities × ~730 days) ──
@@ -246,17 +280,18 @@ def train_lstm_models(weather_data, train_dir: str) -> dict:
     y_train, y_val = daily_targets[:split], daily_targets[split:]
 
     lstm_daily = create_lstm_model(lookback_window=DAILY_LOOKBACK, forecast_horizon=DAILY_HORIZON, feature_dim=NUM_CITIES)
-    history = lstm_daily.train(X_train, y_train, X_val, y_val, epochs=MAX_EPOCHS, batch_size=BATCH_SIZE)
+    d_history = lstm_daily.train(X_train, y_train, X_val, y_val, epochs=MAX_EPOCHS, batch_size=BATCH_SIZE)
     lstm_daily.save(os.path.join(train_dir, model_filename("lstm", "daily")))
     joblib.dump(daily_scaler, os.path.join(train_dir, scaler_filename("daily")))
 
     daily_metrics = evaluate_lstm_multi_city(lstm_daily.model, X_val, y_val, daily_scaler)
-    daily_metrics["val_loss"] = round(float(history.history["val_loss"][-1]), 6)
+    daily_metrics["val_loss"] = round(float(d_history.history["val_loss"][-1]), 6)
     daily_metrics["city_ids"] = city_ids
     metrics["lstm_daily"] = daily_metrics
+    history_curves["lstm_daily"] = _extract_history(d_history)
     print(f"   ✓ LSTM Daily (Multi-City) — MAE: {daily_metrics['mae']}°C, Val Loss: {daily_metrics['val_loss']}")
 
-    return metrics
+    return metrics, history_curves
 
 
 def evaluate_and_decide(all_metrics: dict) -> str:
@@ -323,7 +358,7 @@ def run_retrain_pipeline() -> bool:
         prophet_metrics = train_prophet_models(train_dir)
 
         print("\n[2/6] Training LSTM (multi-city)...")
-        lstm_metrics = train_lstm_models(None, train_dir)  # LSTM reads from DB directly
+        lstm_metrics, lstm_history = train_lstm_models(None, train_dir)
 
         all_metrics = {**prophet_metrics, **lstm_metrics}
 
@@ -343,8 +378,9 @@ def run_retrain_pipeline() -> bool:
         else:
             print("   Skipped (rollback)")
 
-        print("\n[6/6] Updating registry...")
+        print("\n[6/6] Updating registry + saving history...")
         update_registry(version_tag, all_metrics, decision)
+        save_training_history(version_tag, lstm_history)
 
     except (ImportError, ValueError, OSError) as e:
         print(f"❌ Pipeline failed: {e}")

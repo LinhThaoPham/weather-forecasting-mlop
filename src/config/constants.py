@@ -44,12 +44,17 @@ HOURLY_LAG_LIST = [1, 2, 3, 6, 12, 24]
 DAILY_LAG_LIST = [1, 2, 3, 7]
 
 
-def model_filename(model_type: str, mode: str, city: str = DEFAULT_CITY) -> str:
-    """Generate consistent model filename. ASCII-safe."""
+def model_filename(model_type: str, mode: str, city: str = "") -> str:
+    """Generate consistent model filename. ASCII-safe.
+
+    Prophet = per-city (city required), LSTM = multi-city (no city suffix).
+    """
     ext = "json" if model_type == "prophet" else "h5"
-    return f"{model_type}_{mode}_{city}.{ext}"
+    if city:
+        return f"{model_type}_{mode}_{city}.{ext}"
+    return f"{model_type}_{mode}.{ext}"
 
 
-def scaler_filename(mode: str, city: str = "all") -> str:
-    """Generate scaler filename."""
-    return f"lstm_{mode}_{city}_scaler.pkl"
+def scaler_filename(mode: str) -> str:
+    """Generate scaler filename for multi-city LSTM."""
+    return f"lstm_{mode}_scaler.pkl"
