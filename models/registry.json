@@ -1,5 +1,5 @@
 {
-  "current_version": "v_2026-04-29",
+  "current_version": "v_2026-05-01",
   "models": [
     {
       "version": "v_initial",
@@ -190,6 +190,97 @@
       },
       "status": "rejected",
       "decision": "rollback"
+    },
+    {
+      "version": "v_2026-05-01",
+      "trained_at": "2026-05-01T04:04:53.666651",
+      "data_range": "2024-05-01 -> 2026-05-01",
+      "metrics": {
+        "prophet_hourly_dalat": {
+          "mae": 2.5959,
+          "rmse": 3.0594,
+          "mape": 14.12
+        },
+        "prophet_daily_dalat": {
+          "mae": 1.8343,
+          "rmse": 2.6142,
+          "mape": 12.03
+        },
+        "prophet_hourly_danang": {
+          "mae": 2.0371,
+          "rmse": 2.6706,
+          "mape": 8.31
+        },
+        "prophet_daily_danang": {
+          "mae": 1.4168,
+          "rmse": 1.7209,
+          "mape": 5.89
+        },
+        "prophet_hourly_haiphong": {
+          "mae": 5.05,
+          "rmse": 5.6752,
+          "mape": 22.8
+        },
+        "prophet_daily_haiphong": {
+          "mae": 4.9769,
+          "rmse": 5.6839,
+          "mape": 22.5
+        },
+        "prophet_hourly_hanoi": {
+          "mae": 5.0711,
+          "rmse": 5.8399,
+          "mape": 22.81
+        },
+        "prophet_daily_hanoi": {
+          "mae": 5.4078,
+          "rmse": 6.2606,
+          "mape": 24.2
+        },
+        "prophet_hourly_hcm": {
+          "mae": 3.2502,
+          "rmse": 3.4959,
+          "mape": 11.61
+        },
+        "prophet_daily_hcm": {
+          "mae": 3.0505,
+          "rmse": 3.2929,
+          "mape": 11.02
+        },
+        "prophet_hourly_nhatrang": {
+          "mae": 1.0136,
+          "rmse": 1.2247,
+          "mape": 4.02
+        },
+        "prophet_daily_nhatrang": {
+          "mae": 2.6651,
+          "rmse": 3.0199,
+          "mape": 10.36
+        },
+        "lstm_hourly": {
+          "mae": 1.3553,
+          "rmse": 1.9121,
+          "mape": 6.11,
+          "val_loss": 0.006281,
+          "city_ids": [
+            "danang",
+            "hanoi",
+            "hcm"
+          ]
+        },
+        "lstm_daily": {
+          "mae": 1.4268,
+          "rmse": 1.9704,
+          "mape": 6.31,
+          "val_loss": 0.01415,
+          "city_ids": [
+            "danang",
+            "hanoi",
+            "hcm"
+          ]
+        }
+      },
+      "status": "active",
+      "decision": "accept"
     }
   ]
 }
