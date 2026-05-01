@@ -87,8 +87,17 @@ class LSTMWeatherModel:
         print(f"Model saved to {path}")
 
     def load(self, path: str) -> keras.Model:
-        """Load model from disk."""
-        self.model = keras.models.load_model(path)
+        """Load model from disk.
+
+        Uses compile=False to avoid metric deserialization issues across
+        Keras versions, then recompiles with the canonical optimizer/loss.
+        """
+        self.model = keras.models.load_model(path, compile=False)
+        self.model.compile(
+            optimizer=keras.optimizers.Adam(learning_rate=LSTM_LEARNING_RATE),
+            loss="mse",
+            metrics=["mae"],
+        )
         print(f"Model loaded from {path}")
         return self.model
 
