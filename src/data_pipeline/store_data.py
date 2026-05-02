@@ -11,6 +11,7 @@ import requests
 
 from src.config.cities import CITIES, get_city_coords
 from src.config.db import get_connection, init_db
+from src.config.gcp import USE_BIGQUERY
 from src.config.settings import (
     API_TIMEOUT,
     COLUMN_MAP,
@@ -24,6 +25,7 @@ from src.config.settings import (
     OWM_TIMEOUT,
     TIMEZONE,
 )
+from src.data_pipeline.bigquery_storage import append_historical_rows
 
 
 def _parse_open_meteo_hourly(data: dict) -> list[dict]:
@@ -103,6 +105,9 @@ def store_historical(city_id: str, days: int = HISTORICAL_DAYS) -> int:
     with get_connection() as conn:
         conn.executemany(_HIST_INSERT, [{"city_id": city_id, **r} for r in rows])
         inserted = conn.total_changes
+
+    if USE_BIGQUERY:
+        append_historical_rows(city_id, rows)
 
     print(f"  ✓ {city_id}: {len(rows)} rows fetched, stored to DB")
     return inserted

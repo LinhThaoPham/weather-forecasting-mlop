@@ -40,21 +40,7 @@ jobs:
           OPENWEATHER_API_KEY: ${{ secrets.OPENWEATHER_API_KEY }}
           PYTHONIOENCODING: utf-8
         run: |
-          python -c "
-          from src.config.cities import CITIES
-          from src.config.db import init_db
-          from src.data_pipeline.store_data import store_historical, store_forecast, store_current
-          
-          init_db()
-          for city_id in CITIES:
-              print(f'--- {city_id} ---')
-              try: store_historical(city_id, days=2)
-              except Exception as e: print(f'  Hist fail: {e}')
-              try: store_forecast(city_id, days=3)
-              except Exception as e: print(f'  FC fail: {e}')
-              try: store_current(city_id)
-              except Exception as e: print(f'  Cur fail: {e}')
-          "
+          python -m src.data_pipeline.fetch_data
 
       - name: Step 2 — DB Stats
         run: |

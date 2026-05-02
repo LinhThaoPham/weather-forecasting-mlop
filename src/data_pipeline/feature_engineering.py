@@ -4,6 +4,7 @@ import pandas as pd
 from sklearn.preprocessing import MinMaxScaler
 
 from src.config.constants import DAILY_LAG_LIST, HOURLY_LAG_LIST, NUM_CITIES
+from src.config.gcp import USE_BIGQUERY
 
 
 def add_features(df: pd.DataFrame, is_hourly: bool = True) -> pd.DataFrame:
@@ -65,18 +66,22 @@ def build_multi_city_hourly() -> tuple[pd.DataFrame, list[str]]:
         city_ids: ordered list of city IDs matching column order
     """
     from src.config.constants import LSTM_CITY_IDS
-    from src.config.db import get_connection
 
     city_ids = sorted(LSTM_CITY_IDS)
 
-    with get_connection() as conn:
-        rows = conn.execute(
-            """SELECT city_id, timestamp, temperature
-               FROM weather_historical
-               ORDER BY timestamp, city_id"""
-        ).fetchall()
+    if USE_BIGQUERY:
+        from src.data_pipeline.bigquery_storage import fetch_historical_df
+        df = fetch_historical_df()[["city_id", "timestamp", "temperature"]]
+    else:
+        from src.config.db import get_connection
+        with get_connection() as conn:
+            rows = conn.execute(
+                """SELECT city_id, timestamp, temperature
+                   FROM weather_historical
+                   ORDER BY timestamp, city_id"""
+            ).fetchall()
+        df = pd.DataFrame(rows, columns=["city_id", "timestamp", "temperature"])
 
-    df = pd.DataFrame(rows, columns=["city_id", "timestamp", "temperature"])
     df["timestamp"] = pd.to_datetime(df["timestamp"])
 
     # Pivot: rows=timestamps, columns=cities
@@ -101,21 +106,28 @@ def build_multi_city_daily() -> tuple[pd.DataFrame, list[str]]:
         city_ids: ordered list of city IDs matching column order
     """
     from src.config.constants import LSTM_CITY_IDS
-    from src.config.db import get_connection
 
     city_ids = sorted(LSTM_CITY_IDS)
 
-    with get_connection() as conn:
-        rows = conn.execute(
-            """SELECT city_id,
-                      DATE(timestamp) as date,
-                      AVG(temperature) as temp_avg
-               FROM weather_historical
-               GROUP BY city_id, DATE(timestamp)
-               ORDER BY date, city_id"""
-        ).fetchall()
+    if USE_BIGQUERY:
+        from src.data_pipeline.bigquery_storage import fetch_historical_df
+        raw_df = fetch_historical_df()[["city_id", "timestamp", "temperature"]]
+        raw_df["date"] = pd.to_datetime(raw_df["timestamp"]).dt.date
+        df = raw_df.groupby(["city_id", "date"], as_index=False)["temperature"].mean()
+        df = df.rename(columns={"temperature": "temp_avg"})
+    else:
+        from src.config.db import get_connection
+        with get_connection() as conn:
+            rows = conn.execute(
+                """SELECT city_id,
+                          DATE(timestamp) as date,
+                          AVG(temperature) as temp_avg
+                   FROM weather_historical
+                   GROUP BY city_id, DATE(timestamp)
+                   ORDER BY date, city_id"""
+            ).fetchall()
+        df = pd.DataFrame(rows, columns=["city_id", "date", "temp_avg"])
 
-    df = pd.DataFrame(rows, columns=["city_id", "date", "temp_avg"])
     df["date"] = pd.to_datetime(df["date"])
 
     # Pivot: rows=dates, columns=cities
@@ -155,4 +167,3 @@ def denormalize_multi_city(
 ) -> np.ndarray:
     """Inverse multi-city scaling."""
     return scaler.inverse_transform(data.reshape(-1, scaler.n_features_in_)).reshape(data.shape)
-

@@ -10,6 +10,7 @@ import pandas as pd
 import os
 
 from src.config.constants import DEFAULT_CITY, model_filename
+from src.config.gcs_storage import sync_models_from_gcs
 
 # Models storage
 prophet_hourly = None
@@ -50,6 +51,10 @@ def _load_models():
     global prophet_hourly, prophet_daily
 
     try:
+        downloaded = sync_models_from_gcs(MODELS_DIR)
+        if downloaded:
+            print(f"☁ Downloaded {downloaded} model artifacts from GCS")
+
         prophet_hourly = None
         prophet_daily = None
 
