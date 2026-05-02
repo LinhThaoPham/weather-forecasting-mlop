@@ -42,4 +42,6 @@ RUN adduser --disabled-password --gecos '' appuser \
     && chown -R appuser:appuser /app
 USER appuser
 
-CMD ["python", "--version"]
+# Default service entrypoint (can be overridden at runtime)
+# For Cloud Run deployments: gcloud run deploy <service> --args '<service_name>'
+CMD ["python", "start_service.py"]
