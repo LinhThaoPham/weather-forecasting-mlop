@@ -42,6 +42,9 @@ from src.config.constants import (
     model_filename,
     scaler_filename,
 )
+from src.config.gcp import USE_BIGQUERY, USE_GCS
+from src.config.gcs_storage import upload_file, upload_models_dir
+from src.monitoring.vertex_metrics import log_retrain_metrics
 
 MODELS_DIR = os.path.join(PROJECT_ROOT, "models")
 CURRENT_DIR = os.path.join(MODELS_DIR, "current")
@@ -166,23 +169,32 @@ def fetch_training_data(city: str = DEFAULT_CITY):
 
     Returns DataFrame with columns: ds, y, humidity, cloud_cover
     """
-    from src.config.db import get_connection
-
-    with get_connection() as conn:
-        rows = conn.execute(
-            """SELECT timestamp, temperature, humidity, cloud_cover
-               FROM weather_historical
-               WHERE city_id = ?
-               ORDER BY timestamp""",
-            (city,),
-        ).fetchall()
-
-    if not rows:
-        raise ValueError(f"No historical data in DB for city={city}. Run seed_database.py first.")
-
     import pandas as pd
-    df = pd.DataFrame(rows, columns=["ds", "y", "humidity", "cloud_cover"])
-    df["ds"] = pd.to_datetime(df["ds"])
+
+    if USE_BIGQUERY:
+        from src.data_pipeline.bigquery_storage import fetch_historical_df
+        bq_df = fetch_historical_df(city_id=city)
+        if bq_df.empty:
+            raise ValueError(f"No historical data in BigQuery for city={city}.")
+        df = bq_df.rename(columns={"timestamp": "ds", "temperature": "y"})[
+            ["ds", "y", "humidity", "cloud_cover"]
+        ]
+    else:
+        from src.config.db import get_connection
+        with get_connection() as conn:
+            rows = conn.execute(
+                """SELECT timestamp, temperature, humidity, cloud_cover
+                   FROM weather_historical
+                   WHERE city_id = ?
+                   ORDER BY timestamp""",
+                (city,),
+            ).fetchall()
+        if not rows:
+            raise ValueError(f"No historical data in DB for city={city}. Run seed_database.py first.")
+        df = pd.DataFrame(rows, columns=["ds", "y", "humidity", "cloud_cover"])
+
+    ds = pd.to_datetime(df["ds"], utc=True, errors="coerce")
+    df["ds"] = ds.dt.tz_localize(None)
     df = df.dropna(subset=["y"])
     return df
 
@@ -340,6 +352,9 @@ def update_registry(version_tag: str, all_metrics: dict, decision: str) -> None:
         registry["current_version"] = version_tag
     save_registry(registry)
 
+    if USE_GCS:
+        upload_file(REGISTRY_PATH, "models/registry.json")
+
 
 # ===== Main Pipeline =====
 
@@ -381,6 +396,14 @@ def run_retrain_pipeline() -> bool:
         print("\n[6/6] Updating registry + saving history...")
         update_registry(version_tag, all_metrics, decision)
         save_training_history(version_tag, lstm_history)
+
+        if decision == "accept" and USE_GCS:
+            uploaded = upload_models_dir(CURRENT_DIR)
+            print(f"   ☁ Uploaded {uploaded} model artifacts to GCS")
+        if USE_GCS:
+            upload_file(HISTORY_PATH, "models/training_history.json")
+
+        log_retrain_metrics(version_tag, all_metrics, decision)
 
     except (ImportError, ValueError, OSError) as e:
         print(f"❌ Pipeline failed: {e}")

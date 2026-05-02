@@ -10,6 +10,8 @@ from datetime import datetime, timedelta
 
 from src.config.cities import CITIES, get_city_coords
 from src.config.db import get_connection, init_db
+from src.config.gcp import USE_GCS
+from src.config.gcs_storage import download_file
 from src.config.settings import (
     API_TIMEOUT,
     HOURLY_PARAMS,
@@ -277,6 +279,8 @@ def _sanitize_json(obj):
 def get_model_registry():
     """Serve model registry (metrics across versions)."""
     registry_path = os.path.join(MODELS_DIR, "registry.json")
+    if USE_GCS:
+        download_file("models/registry.json", registry_path)
     if not os.path.exists(registry_path):
         return {"error": "registry.json not found"}
 
@@ -293,6 +297,8 @@ def get_model_registry():
 def get_training_history():
     """Serve training history (epoch-level loss curves)."""
     history_path = os.path.join(MODELS_DIR, "training_history.json")
+    if USE_GCS:
+        download_file("models/training_history.json", history_path)
     if not os.path.exists(history_path):
         return {"entries": [], "message": "No training history yet"}
 

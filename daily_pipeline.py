@@ -16,29 +16,8 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
 def step_fetch_today():
     """Step 1: Fetch today's weather data for all 6 cities."""
-    from src.config.cities import CITIES
-    from src.config.db import init_db
-    from src.data_pipeline.store_data import store_current, store_forecast, store_historical
-
-    init_db()
-
-    for city_id in CITIES:
-        print(f"\n--- {city_id} ---")
-        try:
-            # Fetch latest 2 days of historical (fills gaps)
-            store_historical(city_id, days=2)
-        except Exception as e:
-            print(f"  ⚠ Historical fetch failed: {e}")
-
-        try:
-            store_forecast(city_id, days=3)
-        except Exception as e:
-            print(f"  ⚠ Forecast fetch failed: {e}")
-
-        try:
-            store_current(city_id)
-        except Exception as e:
-            print(f"  ⚠ Current fetch failed: {e}")
+    from src.data_pipeline.fetch_data import run_daily_fetch
+    run_daily_fetch(days=2, forecast_days=3)
 
 
 def step_db_stats():

@@ -314,6 +314,7 @@ function showModelMonitor() {
   setNavActive("nav-monitor");
   loadMonitorData();
 }
+window.showModelMonitor = showModelMonitor;
 
 function setNavActive(activeId) {
   const navItems = ["nav-dashboard", "nav-hourly", "nav-daily", "nav-monitor"];

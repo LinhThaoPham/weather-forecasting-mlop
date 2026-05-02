@@ -9,6 +9,7 @@ import joblib
 from typing import List
 
 from src.config.constants import model_filename, scaler_filename
+from src.config.gcs_storage import sync_models_from_gcs
 from src.models_logic.lstm_model import LSTMWeatherModel
 
 # Models storage
@@ -26,6 +27,10 @@ def _load_models():
     global lstm_hourly, lstm_daily, scaler_hourly, scaler_daily
 
     try:
+        downloaded = sync_models_from_gcs(MODELS_DIR)
+        if downloaded:
+            print(f"☁ Downloaded {downloaded} model artifacts from GCS")
+
         # Load hourly model (multi-city)
         hourly_path = os.path.join(MODELS_DIR, model_filename("lstm", "hourly"))
         if os.path.exists(hourly_path):
