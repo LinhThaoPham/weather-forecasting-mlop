@@ -283,75 +283,75 @@
       "decision": "accept"
     },
     {
-      "version": "v_2026-05-03",
-      "trained_at": "2026-05-03T02:14:27.942234",
-      "data_range": "2024-05-03 -> 2026-05-03",
+      "version": "v_2026-05-02",
+      "trained_at": "2026-05-02T03:41:03.584886",
+      "data_range": "2024-05-02 -> 2026-05-02",
       "metrics": {
         "prophet_hourly_dalat": {
-          "mae": 3.7611,
-          "rmse": 4.3674,
-          "mape": 20.24
+          "mae": 3.0844,
+          "rmse": 3.611,
+          "mape": 16.65
         },
         "prophet_daily_dalat": {
-          "mae": 2.1348,
-          "rmse": 2.6553,
-          "mape": 12.74
+          "mae": 1.8938,
+          "rmse": 2.4943,
+          "mape": 11.81
         },
         "prophet_hourly_danang": {
-          "mae": 2.4267,
-          "rmse": 3.1607,
-          "mape": 9.81
+          "mae": 2.0371,
+          "rmse": 2.6706,
+          "mape": 8.31
         },
         "prophet_daily_danang": {
-          "mae": 1.4238,
-          "rmse": 1.7274,
-          "mape": 5.9
+          "mae": 1.4168,
+          "rmse": 1.7209,
+          "mape": 5.89
         },
         "prophet_hourly_haiphong": {
-          "mae": 3.7841,
-          "rmse": 4.3749,
-          "mape": 17.23
+          "mae": 5.05,
+          "rmse": 5.6752,
+          "mape": 22.8
         },
         "prophet_daily_haiphong": {
-          "mae": 4.6096,
-          "rmse": 5.3178,
-          "mape": 20.83
+          "mae": 4.9769,
+          "rmse": 5.6839,
+          "mape": 22.5
         },
         "prophet_hourly_hanoi": {
-          "mae": 4.4959,
-          "rmse": 5.2402,
-          "mape": 20.29
+          "mae": 4.9762,
+          "rmse": 5.7516,
+          "mape": 22.37
         },
         "prophet_daily_hanoi": {
-          "mae": 4.9912,
-          "rmse": 5.8427,
-          "mape": 22.33
+          "mae": 5.1932,
+          "rmse": 6.0433,
+          "mape": 23.24
         },
         "prophet_hourly_hcm": {
-          "mae": 1.1745,
-          "rmse": 1.4618,
-          "mape": 4.28
+          "mae": 3.102,
+          "rmse": 3.3437,
+          "mape": 11.07
         },
         "prophet_daily_hcm": {
-          "mae": 2.205,
-          "rmse": 2.4419,
-          "mape": 8.01
+          "mae": 2.6036,
+          "rmse": 2.8355,
+          "mape": 9.43
         },
         "prophet_hourly_nhatrang": {
-          "mae": 1.2533,
-          "rmse": 1.4985,
-          "mape": 4.9
+          "mae": 0.8503,
+          "rmse": 1.0573,
+          "mape": 3.42
         },
         "prophet_daily_nhatrang": {
-          "mae": 3.6086,
-          "rmse": 4.0045,
-          "mape": 13.99
+          "mae": 3.1819,
+          "rmse": 3.5623,
+          "mape": 12.35
         },
         "lstm_hourly": {
-          "mae": 1.4202,
-          "rmse": 1.9524,
-          "mape": 6.36,
-          "val_loss": 0.00537,
+          "mae": 1.3938,
+          "rmse": 1.953,
+          "mape": 6.26,
+          "val_loss": 0.006104,
           "city_ids": [
             "danang",
             "hanoi",
@@ -359,10 +359,101 @@
           ]
         },
         "lstm_daily": {
-          "mae": 1.3911,
-          "rmse": 1.8923,
-          "mape": 6.23,
-          "val_loss": 0.014751,
+          "mae": 1.3281,
+          "rmse": 1.8327,
+          "mape": 5.92,
+          "val_loss": 0.012846,
+          "city_ids": [
+            "danang",
+            "hanoi",
+            "hcm"
+          ]
+        }
+      },
+      "status": "active",
+      "decision": "accept"
+    },
+    {
+      "version": "v_2026-05-03",
+      "trained_at": "2026-05-03T03:58:26.726531",
+      "data_range": "2024-05-03 -> 2026-05-03",
+      "metrics": {
+        "prophet_hourly_dalat": {
+          "mae": 3.7816,
+          "rmse": 4.394,
+          "mape": 20.35
+        },
+        "prophet_daily_dalat": {
+          "mae": 2.1109,
+          "rmse": 2.6346,
+          "mape": 12.64
+        },
+        "prophet_hourly_danang": {
+          "mae": 3.2607,
+          "rmse": 4.1212,
+          "mape": 13.13
+        },
+        "prophet_daily_danang": {
+          "mae": 1.5166,
+          "rmse": 1.781,
+          "mape": 6.27
+        },
+        "prophet_hourly_haiphong": {
+          "mae": 4.2692,
+          "rmse": 4.8965,
+          "mape": 19.33
+        },
+        "prophet_daily_haiphong": {
+          "mae": 4.525,
+          "rmse": 5.2284,
+          "mape": 20.48
+        },
+        "prophet_hourly_hanoi": {
+          "mae": 4.6599,
+          "rmse": 5.4244,
+          "mape": 20.98
+        },
+        "prophet_daily_hanoi": {
+          "mae": 4.9757,
+          "rmse": 5.8264,
+          "mape": 22.27
+        },
+        "prophet_hourly_hcm": {
+          "mae": 1.6248,
+          "rmse": 1.868,
+          "mape": 5.84
+        },
+        "prophet_daily_hcm": {
+          "mae": 2.1474,
+          "rmse": 2.3855,
+          "mape": 7.81
+        },
+        "prophet_hourly_nhatrang": {
+          "mae": 1.6853,
+          "rmse": 1.9874,
+          "mape": 6.52
+        },
+        "prophet_daily_nhatrang": {
+          "mae": 3.405,
+          "rmse": 3.7791,
+          "mape": 13.2
+        },
+        "lstm_hourly": {
+          "mae": 1.4199,
+          "rmse": 1.9619,
+          "mape": 6.33,
+          "val_loss": 0.005575,
+          "city_ids": [
+            "danang",
+            "hanoi",
+            "hcm"
+          ]
+        },
+        "lstm_daily": {
+          "mae": 1.2598,
+          "rmse": 1.764,
+          "mape": 5.73,
+          "val_loss": 0.011662,
           "city_ids": [
             "danang",
             "hanoi",
