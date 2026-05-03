@@ -22,26 +22,7 @@ CITIES = {
         "name": "Đà Nẵng",
         "country": "VN"
     },
-    "haiphong": {
-        "lat": 20.8449,
-        "lon": 106.6881,
-        "name": "Hải Phòng",
-        "country": "VN"
-    },
-    "nhatrang": {
-        "lat": 12.2388,
-        "lon": 109.1967,
-        "name": "Nha Trang",
-        "country": "VN"
-    },
-    "dalat": {
-        "lat": 11.9404,
-        "lon": 108.4583,
-        "name": "Đà Lạt",
-        "country": "VN"
-    },
 }
-
 
 def get_city_coords(city: str = "hanoi"):
     """Get city info dict. Returns Hà Nội as default."""

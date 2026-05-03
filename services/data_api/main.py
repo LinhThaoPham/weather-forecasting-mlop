@@ -210,48 +210,52 @@ def get_current(city: str = "hanoi"):
 
 @app.get("/forecast")
 def get_forecast(days: int = 3, city: str = "hanoi"):
-    """Lấy dữ liệu forecast từ Open-Meteo → lưu DB → trả về."""
+    """Lấy dự báo AI từ bảng weather_ai_predictions.
+
+    Dữ liệu này được tạo bởi daily_pipeline (hoặc forecast_api/predict).
+    Dashboard hiển thị kết quả DỰ BÁO CỦA AI, không phải của Open-Meteo.
+    """
     try:
         coords = get_city_coords(city)
-
-        params = {
-            "latitude": coords["lat"],
-            "longitude": coords["lon"],
-            "hourly": HOURLY_PARAMS,
-            "forecast_days": days,
-            "timezone": TIMEZONE,
-        }
-
-        resp = requests.get(OPEN_METEO_FORECAST_URL, params=params, timeout=API_TIMEOUT)
-        resp.raise_for_status()
-        api_data = resp.json()
-
-        # Store forecast to DB
-        hourly = api_data.get("hourly", {})
-        times = hourly.get("time", [])
-        temps = hourly.get("temperature_2m", [])
-        humids = hourly.get("relative_humidity_2m", [])
-        clouds = hourly.get("cloud_cover", [])
+        hours = days * 24
 
         with get_connection() as conn:
-            for i, ts in enumerate(times):
-                conn.execute(
-                    """INSERT OR REPLACE INTO weather_forecast
-                       (city_id, timestamp, temperature, humidity, cloud_cover, forecast_days)
-                       VALUES (?, ?, ?, ?, ?, ?)""",
-                    (city, ts,
-                     temps[i] if i < len(temps) else None,
-                     humids[i] if i < len(humids) else None,
-                     clouds[i] if i < len(clouds) else None,
-                     days),
-                )
+            rows = conn.execute(
+                """SELECT target_time, predicted_temp, model_version, created_at
+                   FROM weather_ai_predictions
+                   WHERE city_id = ?
+                   ORDER BY target_time
+                   LIMIT ?""",
+                (city, hours),
+            ).fetchall()
 
+        if rows:
+            data = [dict(r) for r in rows]
+            return {
+                "city": coords["name"],
+                "lat": coords["lat"],
+                "lon": coords["lon"],
+                "forecast_days": days,
+                "source": "ai_model",
+                "model_version": data[0].get("model_version", "unknown") if data else None,
+                "records_count": len(data),
+                "data": {
+                    "hourly": {
+                        "time": [d["target_time"] for d in data],
+                        "temperature_2m": [d["predicted_temp"] for d in data],
+                    }
+                },
+            }
+
+        # Fallback: no AI predictions yet → return empty with message
         return {
             "city": coords["name"],
             "lat": coords["lat"],
             "lon": coords["lon"],
             "forecast_days": days,
-            "data": api_data,
+            "source": "none",
+            "message": "No AI predictions available yet. Run daily_pipeline.py first.",
+            "data": {"hourly": {"time": [], "temperature_2m": []}},
         }
 
     except Exception as e:

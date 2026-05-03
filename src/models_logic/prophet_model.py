@@ -12,8 +12,6 @@ def train_prophet(df, is_hourly: bool = True) -> Prophet:
         weekly_seasonality=True,
         daily_seasonality=is_hourly,
     )
-    model.add_regressor("humidity")
-    model.add_regressor("cloud_cover")
     model.fit(df)
     return model
 

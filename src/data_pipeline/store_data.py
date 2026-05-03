@@ -218,9 +218,6 @@ def seed_all_cities(days: int = HISTORICAL_DAYS, delay: float = 0.5) -> None:
         store_historical(city_id, days=days)
         time.sleep(delay)
 
-        store_forecast(city_id)
-        time.sleep(delay)
-
         store_current(city_id)
         time.sleep(delay)
 
@@ -228,7 +225,7 @@ def seed_all_cities(days: int = HISTORICAL_DAYS, delay: float = 0.5) -> None:
 
     # Summary
     with get_connection() as conn:
-        for table in ["weather_historical", "weather_forecast", "weather_current"]:
+        for table in ["weather_historical", "weather_current"]:
             count = conn.execute(f"SELECT COUNT(*) FROM {table}").fetchone()[0]
             print(f"📊 {table}: {count:,} rows")
 

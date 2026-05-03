@@ -6,10 +6,10 @@
 // Auto-detect: Cloud Run URLs when deployed, localhost for local dev
 const IS_CLOUD = window.location.hostname.includes("run.app");
 const FORECAST_API = IS_CLOUD
-  ? "https://forecast-api-217473815434.asia-southeast1.run.app"
+  ? "https://forecast-api-rvbp3c6xsq-as.a.run.app"
   : "http://localhost:8000";
 const DATA_API = IS_CLOUD
-  ? "https://data-api-217473815434.asia-southeast1.run.app"
+  ? "https://data-api-rvbp3c6xsq-as.a.run.app"
   : "http://localhost:8001";
 
 let currentCity = "hanoi";
@@ -20,10 +20,7 @@ let forecastChart = null;
 const CITY_NAMES = {
   hanoi: "Hà Nội",
   hcm: "TP. Hồ Chí Minh",
-  danang: "Đà Nẵng",
-  haiphong: "Hải Phòng",
-  nhatrang: "Nha Trang",
-  dalat: "Đà Lạt"
+  danang: "Đà Nẵng"
 };
 
 // OWM Weather Code → icon + description (Vietnamese)

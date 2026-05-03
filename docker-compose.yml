@@ -106,7 +106,7 @@ services:
     build:
       context: .
       dockerfile: Dockerfile
-    command: python src/training/retrain_pipeline.py --daemon
+    command: python daily_pipeline.py
     volumes:
       - ./models:/app/models
     environment:
