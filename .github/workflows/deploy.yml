@@ -1,0 +1,81 @@
+name: Deploy to Google Cloud Run
+
+on:
+  push:
+    branches:
+      - main
+    paths-ignore:
+      - 'README.md'
+      - '.github/workflows/daily_pipeline.yml'
+      - 'data/**'      # Bỏ qua khi file db thay đổi
+      - 'models/**'    # Bỏ qua khi model thay đổi
+
+env:
+  PROJECT_ID: weather-forecasting-494811
+  REGION: asia-southeast1
+  IMAGE_NAME: asia-southeast1-docker.pkg.dev/weather-forecasting-494811/weather-forecasting/weather-forecasting-mlops:latest
+
+jobs:
+  build-and-deploy:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      # Xác thực với Google Cloud bằng Secret
+      - name: Authenticate to Google Cloud
+        uses: google-github-actions/auth@v2
+        with:
+          credentials_json: ${{ secrets.GCP_CREDENTIALS }}
+
+      # Cấu hình Docker để push lên Artifact Registry
+      - name: Set up Cloud SDK
+        uses: google-github-actions/setup-gcloud@v2
+
+      - name: Configure Docker Auth
+        run: gcloud auth configure-docker asia-southeast1-docker.pkg.dev --quiet
+
+      # BUILD và PUSH Backend Image
+      - name: Build and Push Backend Docker Image
+        run: |
+          docker build -t ${{ env.IMAGE_NAME }} .
+          docker push ${{ env.IMAGE_NAME }}
+
+      # DEPLOY: Data API
+      - name: Deploy Data API
+        run: |
+          gcloud run services update data-api \
+            --image ${{ env.IMAGE_NAME }} \
+            --region ${{ env.REGION }}
+
+      # DEPLOY: Prophet API
+      - name: Deploy Prophet API
+        run: |
+          gcloud run services update prophet-api \
+            --image ${{ env.IMAGE_NAME }} \
+            --region ${{ env.REGION }}
+
+      # DEPLOY: LSTM API
+      - name: Deploy LSTM API
+        run: |
+          gcloud run services update lstm-api \
+            --image ${{ env.IMAGE_NAME }} \
+            --region ${{ env.REGION }}
+
+      # DEPLOY: Forecast API (Orchestrator)
+      - name: Deploy Forecast API
+        run: |
+          gcloud run services update forecast-api \
+            --image ${{ env.IMAGE_NAME }} \
+            --region ${{ env.REGION }}
+
+      # DEPLOY: Dashboard UI (Frontend)
+      - name: Deploy Dashboard UI
+        run: |
+          gcloud run deploy dashboard-ui \
+            --source . \
+            --region ${{ env.REGION }} \
+            --project ${{ env.PROJECT_ID }} \
+            --allow-unauthenticated \
+            --quiet

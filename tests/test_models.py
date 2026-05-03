@@ -42,23 +42,6 @@ class TestFeatureEngineering:
         assert feature_engineering is not None
 
 
-# ── Hybrid Ensemble ──
-
-class TestHybridEnsemble:
-    def test_import_module(self):
-        from src.models_logic import hybrid_ensemble
-        assert hybrid_ensemble is not None
-
-    def test_weighted_average_logic(self):
-        """Verify the ensemble weighting concept."""
-        from src.config.constants import PROPHET_WEIGHT
-        lstm_weight = 1 - PROPHET_WEIGHT
-
-        prophet_pred = 30.0
-        lstm_pred = 28.0
-        expected = PROPHET_WEIGHT * prophet_pred + lstm_weight * lstm_pred
-
-        assert abs(expected - (PROPHET_WEIGHT * 30 + lstm_weight * 28)) < 0.01
 
 
 # ── Evaluate Module ──

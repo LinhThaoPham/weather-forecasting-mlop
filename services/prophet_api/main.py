@@ -10,69 +10,47 @@ import pandas as pd
 import os
 
 from src.config.constants import DEFAULT_CITY, model_filename
+from src.config.cities import CITIES
 from src.config.gcs_storage import sync_models_from_gcs
 
-# Models storage
-prophet_hourly = None
-prophet_daily = None
+# Per-city models: {"hanoi": model, "hcm": model, ...}
+prophet_hourly_models: dict = {}
+prophet_daily_models: dict = {}
 
 BASE_DIR = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", ".."))
 MODELS_DIR = os.path.join(BASE_DIR, "models", "current")
 
 
-def _resolve_model_path(mode: str) -> str | None:
-    """Resolve Prophet model path with default city, then fallback to any city artifact."""
-    preferred_name = model_filename("prophet", mode, DEFAULT_CITY)
-    preferred_path = os.path.join(MODELS_DIR, preferred_name)
-    if os.path.exists(preferred_path):
-        return preferred_path
-
-    if not os.path.isdir(MODELS_DIR):
-        return None
-
-    prefix = f"prophet_{mode}_"
-    candidates = sorted(
-        f for f in os.listdir(MODELS_DIR)
-        if f.startswith(prefix) and f.endswith(".json")
-    )
-    if not candidates:
-        return None
-
-    fallback_path = os.path.join(MODELS_DIR, candidates[0])
-    print(
-        f"⚠ Preferred {mode} model '{preferred_name}' not found. "
-        f"Using fallback '{candidates[0]}'."
-    )
-    return fallback_path
-
-
 def _load_models():
-    """Load Prophet models from disk."""
-    global prophet_hourly, prophet_daily
+    """Load Prophet models for ALL cities from disk."""
+    global prophet_hourly_models, prophet_daily_models
 
     try:
         downloaded = sync_models_from_gcs(MODELS_DIR)
         if downloaded:
             print(f"☁ Downloaded {downloaded} model artifacts from GCS")
 
-        prophet_hourly = None
-        prophet_daily = None
+        prophet_hourly_models = {}
+        prophet_daily_models = {}
 
-        hourly_path = _resolve_model_path("hourly")
-        if hourly_path and os.path.exists(hourly_path):
-            with open(hourly_path, "r", encoding="utf-8") as f:
-                prophet_hourly = model_from_json(json.load(f))
-            print(f"✓ Prophet Hourly model loaded from {hourly_path}")
-        else:
-            print("⚠ Prophet Hourly model not found in models/current")
+        for city_id in CITIES:
+            # Hourly
+            hourly_name = model_filename("prophet", "hourly", city_id)
+            hourly_path = os.path.join(MODELS_DIR, hourly_name)
+            if os.path.exists(hourly_path):
+                with open(hourly_path, "r", encoding="utf-8") as f:
+                    prophet_hourly_models[city_id] = model_from_json(json.load(f))
+                print(f"  ✓ Prophet Hourly [{city_id}] loaded")
 
-        daily_path = _resolve_model_path("daily")
-        if daily_path and os.path.exists(daily_path):
-            with open(daily_path, "r", encoding="utf-8") as f:
-                prophet_daily = model_from_json(json.load(f))
-            print(f"✓ Prophet Daily model loaded from {daily_path}")
-        else:
-            print("⚠ Prophet Daily model not found in models/current")
+            # Daily
+            daily_name = model_filename("prophet", "daily", city_id)
+            daily_path = os.path.join(MODELS_DIR, daily_name)
+            if os.path.exists(daily_path):
+                with open(daily_path, "r", encoding="utf-8") as f:
+                    prophet_daily_models[city_id] = model_from_json(json.load(f))
+                print(f"  ✓ Prophet Daily  [{city_id}] loaded")
+
+        print(f"✓ Prophet loaded: {len(prophet_hourly_models)} hourly, {len(prophet_daily_models)} daily")
 
     except Exception as e:
         print(f"❌ Error loading Prophet models: {e}")
@@ -99,8 +77,9 @@ app.add_middleware(
 # ================== Request/Response Models ==================
 
 class ProphetForecastRequest(BaseModel):
-    data: List[Dict[str, Any]]  # [{ds, humidity, cloud_cover}, ...]
+    data: List[Dict[str, Any]]  # [{"ds": "2026-05-03 12:00:00"}, ...]
     mode: str = "hourly"        # "hourly" | "daily"
+    city: str = "hanoi"         # per-city model selection
 
 
 class ProphetForecastResponse(BaseModel):
@@ -116,8 +95,8 @@ def health():
     return {
         "status": "healthy",
         "service": "prophet_api",
-        "hourly_loaded": prophet_hourly is not None,
-        "daily_loaded": prophet_daily is not None
+        "hourly_cities": list(prophet_hourly_models.keys()),
+        "daily_cities": list(prophet_daily_models.keys()),
     }
 
 
@@ -129,8 +108,8 @@ def reload_models():
         return {
             "status": "success",
             "message": "Models reloaded",
-            "hourly_loaded": prophet_hourly is not None,
-            "daily_loaded": prophet_daily is not None
+            "hourly_cities": list(prophet_hourly_models.keys()),
+            "daily_cities": list(prophet_daily_models.keys()),
         }
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Reload failed: {str(e)}")
@@ -138,21 +117,29 @@ def reload_models():
 
 @app.post("/forecast", response_model=ProphetForecastResponse)
 def forecast(request: ProphetForecastRequest):
-    """Predict temperatures using Prophet model.
+    """Predict temperatures using Prophet model (pure time-series).
 
-    Expects data with columns: ds, humidity, cloud_cover
+    Expects data with column: ds (timestamp only, no exogenous variables)
     Returns: temperature predictions (yhat)
     """
     try:
-        model = prophet_hourly if request.mode == "hourly" else prophet_daily
+        models = prophet_hourly_models if request.mode == "hourly" else prophet_daily_models
+        model = models.get(request.city)
 
+        # Fallback: try default city if requested city not found
         if model is None:
-            raise HTTPException(status_code=503, detail=f"{request.mode} model not loaded")
+            model = models.get(DEFAULT_CITY)
+        if model is None:
+            available = list(models.keys())
+            raise HTTPException(
+                status_code=503,
+                detail=f"No {request.mode} model for '{request.city}'. Available: {available}"
+            )
 
         df = pd.DataFrame(request.data)
         df['ds'] = pd.to_datetime(df['ds'])
 
-        forecast_result = model.predict(df[['ds', 'humidity', 'cloud_cover']])
+        forecast_result = model.predict(df[['ds']])
 
         return ProphetForecastResponse(
             status="success",
@@ -189,11 +176,11 @@ def predict_daily(data: List[Dict[str, Any]]):
 @app.get("/")
 def root():
     return {
-        "message": "Prophet API đang chạy",
-        "hourly_loaded": prophet_hourly is not None,
-        "daily_loaded": prophet_daily is not None,
+        "message": "Prophet API — Per-City Models",
+        "hourly_cities": list(prophet_hourly_models.keys()),
+        "daily_cities": list(prophet_daily_models.keys()),
         "endpoints": {
-            "forecast": "/forecast (POST - recommended)",
+            "forecast": "/forecast (POST - per-city)",
             "predict_hourly": "/predict_hourly (POST - legacy)",
             "predict_daily": "/predict_daily (POST - legacy)",
             "reload": "/reload (POST)",

@@ -35,34 +35,13 @@ jobs:
       - name: Create data directory
         run: mkdir -p data models/current models/archive
 
-      - name: Step 1 — Fetch today weather data
+      - name: Step 1 — Run Daily Pipeline (fetch + drift check + retrain)
         env:
           OPENWEATHER_API_KEY: ${{ secrets.OPENWEATHER_API_KEY }}
           PYTHONIOENCODING: utf-8
+          TF_CPP_MIN_LOG_LEVEL: '2'
         run: |
-          python -m src.data_pipeline.fetch_data
-
-      - name: Step 2 — DB Stats
-        run: |
-          python -c "
-          from src.config.db import get_connection
-          with get_connection() as conn:
-              h = conn.execute('SELECT COUNT(*) FROM weather_historical').fetchone()[0]
-              f = conn.execute('SELECT COUNT(*) FROM weather_forecast').fetchone()[0]
-              c = conn.execute('SELECT COUNT(*) FROM weather_current').fetchone()[0]
-          print(f'Historical: {h:,} | Forecast: {f:,} | Current: {c:,}')
-          "
-
-      - name: Step 3 — Train Prophet + LSTM (multi-city)
-        env:
-          PYTHONIOENCODING: utf-8
-          TF_CPP_MIN_LOG_LEVEL: '2'  # Suppress TF warnings
-        run: |
-          python -c "
-          from src.training.retrain_pipeline import run_retrain_pipeline
-          result = run_retrain_pipeline()
-          print(f'Pipeline result: {result}')
-          "
+          python daily_pipeline.py
 
       - name: Show outputs
         run: |

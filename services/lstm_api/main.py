@@ -131,10 +131,94 @@ def reload_models():
         raise HTTPException(status_code=500, detail=f"Reload failed: {str(e)}")
 
 
+class LSTMMultiCityRequest(BaseModel):
+    """Multi-city forecast request — matches training shape (window, 3 cities)."""
+    city_temperatures: List[List[float]]  # [[danang temps], [hanoi temps], [hcm temps]]
+    city_ids: List[str]                   # ["danang", "hanoi", "hcm"]
+    mode: str = "hourly"
+
+
+class LSTMMultiCityResponse(BaseModel):
+    status: str
+    mode: str
+    predictions: dict  # {"danang": [preds], "hanoi": [preds], "hcm": [preds]}
+
+
+@app.post("/forecast_multi", response_model=LSTMMultiCityResponse)
+def forecast_multi(request: LSTMMultiCityRequest):
+    """Multi-city forecast: 3-city input → 3-city output.
+
+    The LSTM was trained with shape (batch, window, 3_cities).
+    This endpoint accepts data for all 3 cities and returns
+    predictions for each city.
+    """
+    try:
+        if request.mode == "hourly":
+            model = lstm_hourly
+            scaler = scaler_hourly
+            window_size = 24
+        else:
+            model = lstm_daily
+            scaler = scaler_daily
+            window_size = 90 if request.mode == "daily" else 7
+
+        if model is None:
+            raise HTTPException(status_code=503, detail=f"{request.mode} model not loaded")
+        if scaler is None:
+            raise HTTPException(status_code=503, detail=f"{request.mode} scaler not loaded")
+
+        n_cities = len(request.city_temperatures)
+
+        # Build input matrix: (window_size, n_cities)
+        sequences = []
+        for city_temps in request.city_temperatures:
+            temps = np.array(city_temps, dtype=np.float32)
+            # Pad or trim to window_size
+            if len(temps) >= window_size:
+                seq = temps[-window_size:]
+            else:
+                pad = np.full(window_size - len(temps), temps[0] if len(temps) > 0 else 0)
+                seq = np.concatenate([pad, temps])
+            sequences.append(seq)
+
+        # Shape: (window_size, n_cities)
+        input_matrix = np.column_stack(sequences)
+
+        # Normalize using multi-city scaler
+        normalized = scaler.transform(input_matrix)  # (window_size, n_cities)
+
+        # Reshape for model: (1, window_size, n_cities)
+        input_array = normalized.reshape(1, window_size, n_cities).astype(np.float32)
+
+        # Predict
+        predictions_normalized = model.predict(input_array)  # (1, horizon, n_cities)
+        predictions_2d = predictions_normalized.reshape(-1, n_cities)  # (horizon, n_cities)
+
+        # Denormalize
+        predictions_real = scaler.inverse_transform(predictions_2d)  # (horizon, n_cities)
+
+        # Build per-city result
+        result = {}
+        for i, city_id in enumerate(request.city_ids):
+            result[city_id] = predictions_real[:, i].tolist()
+
+        return LSTMMultiCityResponse(
+            status="success",
+            mode=request.mode,
+            predictions=result
+        )
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Multi-city prediction error: {str(e)}")
+
+
 @app.post("/forecast", response_model=LSTMForecastResponse)
 def forecast(request: LSTMForecastRequest):
     """High-level endpoint: raw temps in → raw temp predictions out.
     Handles normalization/denormalization internally.
+    (Legacy single-city endpoint — kept for backward compatibility)
     """
     try:
         if request.mode == "hourly":

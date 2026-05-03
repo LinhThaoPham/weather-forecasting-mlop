@@ -167,7 +167,8 @@ def reload_services() -> dict:
 def fetch_training_data(city: str = DEFAULT_CITY):
     """Fetch training data FROM SQLite for a single city.
 
-    Returns DataFrame with columns: ds, y, humidity, cloud_cover
+    Returns DataFrame with columns: ds, y
+    Prophet is pure time-series — no exogenous variables needed.
     """
     import pandas as pd
 
@@ -177,13 +178,13 @@ def fetch_training_data(city: str = DEFAULT_CITY):
         if bq_df.empty:
             raise ValueError(f"No historical data in BigQuery for city={city}.")
         df = bq_df.rename(columns={"timestamp": "ds", "temperature": "y"})[
-            ["ds", "y", "humidity", "cloud_cover"]
+            ["ds", "y"]
         ]
     else:
         from src.config.db import get_connection
         with get_connection() as conn:
             rows = conn.execute(
-                """SELECT timestamp, temperature, humidity, cloud_cover
+                """SELECT timestamp, temperature
                    FROM weather_historical
                    WHERE city_id = ?
                    ORDER BY timestamp""",
@@ -191,7 +192,7 @@ def fetch_training_data(city: str = DEFAULT_CITY):
             ).fetchall()
         if not rows:
             raise ValueError(f"No historical data in DB for city={city}. Run seed_database.py first.")
-        df = pd.DataFrame(rows, columns=["ds", "y", "humidity", "cloud_cover"])
+        df = pd.DataFrame(rows, columns=["ds", "y"])
 
     ds = pd.to_datetime(df["ds"], utc=True, errors="coerce")
     df["ds"] = ds.dt.tz_localize(None)
