@@ -9,6 +9,7 @@ from datetime import datetime, timedelta
 
 from src.config.cities import CITIES
 from src.config.db import get_connection
+from src.config.gcp import USE_BIGQUERY
 
 # Drift threshold in °C — retrain only if MAE exceeds this
 DRIFT_THRESHOLD = 2.0
@@ -17,6 +18,14 @@ DRIFT_THRESHOLD = 2.0
 def get_yesterday_predictions(city_id: str) -> pd.DataFrame | None:
     """Fetch AI predictions that targeted yesterday's timestamps."""
     yesterday = (datetime.now() - timedelta(days=1)).strftime("%Y-%m-%d")
+
+    if USE_BIGQUERY:
+        from src.data_pipeline.bigquery_storage import fetch_yesterday_predictions
+        df = fetch_yesterday_predictions(city_id, yesterday)
+        if df.empty:
+            return None
+        df["target_time"] = pd.to_datetime(df["target_time"]).dt.tz_localize(None)
+        return df
 
     with get_connection() as conn:
         rows = conn.execute(
@@ -38,6 +47,18 @@ def get_yesterday_predictions(city_id: str) -> pd.DataFrame | None:
 
 def get_actual_observations(city_id: str, date_str: str) -> pd.DataFrame | None:
     """Fetch actual historical observations for a specific date."""
+    if USE_BIGQUERY:
+        from src.data_pipeline.bigquery_storage import fetch_historical_df
+        df = fetch_historical_df(city_id)
+        if df.empty:
+            return None
+        df["timestamp"] = pd.to_datetime(df["timestamp"]).dt.tz_localize(None)
+        # Filter for the specific date
+        df = df[df["timestamp"].dt.strftime("%Y-%m-%d") == date_str]
+        if df.empty:
+            return None
+        return df[["timestamp", "temperature"]]
+
     with get_connection() as conn:
         rows = conn.execute(
             """SELECT timestamp, temperature
@@ -166,6 +187,10 @@ def save_ai_predictions(city_id: str, predictions: list[dict], model_version: st
     Returns:
         Number of rows inserted
     """
+    if USE_BIGQUERY:
+        from src.data_pipeline.bigquery_storage import append_ai_predictions
+        return append_ai_predictions(city_id, predictions, model_version)
+
     with get_connection() as conn:
         conn.executemany(
             """INSERT OR REPLACE INTO weather_ai_predictions

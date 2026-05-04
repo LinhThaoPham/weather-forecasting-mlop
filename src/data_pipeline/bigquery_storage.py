@@ -186,3 +186,125 @@ def fetch_historical_df(city_id: str | None = None) -> pd.DataFrame:
             "pressure":      row["pressure"],
         })
     return pd.DataFrame(records)
+
+
+def _pred_table_ref() -> str:
+    return f"{GCP_PROJECT_ID}.{BIGQUERY_DATASET}.weather_ai_predictions"
+
+
+def ensure_predictions_table() -> None:
+    """Create BigQuery table for AI predictions if it doesn't exist."""
+    if not USE_BIGQUERY:
+        return
+
+    client = _client()
+    sql = f"""
+    CREATE TABLE IF NOT EXISTS `{_pred_table_ref()}` (
+      city_id STRING NOT NULL,
+      target_time TIMESTAMP NOT NULL,
+      predicted_temp FLOAT64,
+      predicted_humidity FLOAT64,
+      predicted_wind_speed FLOAT64,
+      predicted_cloud_cover FLOAT64,
+      model_version STRING
+    )
+    PARTITION BY DATE(target_time)
+    CLUSTER BY city_id
+    """
+    client.query(sql).result()
+
+
+def append_ai_predictions(city_id: str, predictions: list[dict], model_version: str) -> int:
+    """Append AI predictions to BigQuery with dedup on (city_id, target_time)."""
+    if not USE_BIGQUERY or not predictions:
+        return 0
+
+    ensure_predictions_table()
+    client = _client()
+
+    payload = []
+    for p in predictions:
+        payload.append({
+            "city_id": city_id,
+            "target_time": p.get("target_time").isoformat() if hasattr(p.get("target_time"), "isoformat") else str(p.get("target_time")),
+            "predicted_temp": p.get("predicted_temp"),
+            "predicted_humidity": p.get("predicted_humidity"),
+            "predicted_wind_speed": p.get("predicted_wind_speed"),
+            "predicted_cloud_cover": p.get("predicted_cloud_cover"),
+            "model_version": model_version,
+        })
+
+    import uuid
+    temp_table = f"{GCP_PROJECT_ID}.{BIGQUERY_DATASET}._pred_staging_{uuid.uuid4().hex[:12]}"
+    schema = [
+        bigquery.SchemaField("city_id", "STRING", mode="REQUIRED"),
+        bigquery.SchemaField("target_time", "TIMESTAMP", mode="REQUIRED"),
+        bigquery.SchemaField("predicted_temp", "FLOAT64"),
+        bigquery.SchemaField("predicted_humidity", "FLOAT64"),
+        bigquery.SchemaField("predicted_wind_speed", "FLOAT64"),
+        bigquery.SchemaField("predicted_cloud_cover", "FLOAT64"),
+        bigquery.SchemaField("model_version", "STRING"),
+    ]
+
+    load_job = client.load_table_from_json(
+        payload,
+        temp_table,
+        job_config=bigquery.LoadJobConfig(
+            schema=schema,
+            write_disposition="WRITE_TRUNCATE",
+        ),
+    )
+    load_job.result()
+
+    merge_sql = f"""
+    MERGE `{_pred_table_ref()}` AS target
+    USING `{temp_table}` AS src
+    ON target.city_id = src.city_id
+       AND target.target_time = src.target_time
+    WHEN NOT MATCHED THEN
+      INSERT (city_id, target_time, predicted_temp, predicted_humidity, predicted_wind_speed, predicted_cloud_cover, model_version)
+      VALUES (src.city_id, src.target_time, src.predicted_temp, src.predicted_humidity, src.predicted_wind_speed, src.predicted_cloud_cover, src.model_version)
+    WHEN MATCHED THEN
+      UPDATE SET 
+        predicted_temp = src.predicted_temp,
+        predicted_humidity = src.predicted_humidity,
+        predicted_wind_speed = src.predicted_wind_speed,
+        predicted_cloud_cover = src.predicted_cloud_cover,
+        model_version = src.model_version
+    """
+    client.query(merge_sql).result()
+    client.delete_table(temp_table, not_found_ok=True)
+    return len(payload)
+
+
+def fetch_yesterday_predictions(city_id: str, date_prefix: str) -> pd.DataFrame:
+    """Fetch AI predictions for a specific date prefix."""
+    if not USE_BIGQUERY:
+        return pd.DataFrame()
+
+    ensure_predictions_table()
+    client = _client()
+
+    params = [
+        bigquery.ScalarQueryParameter("city_id", "STRING", city_id),
+        bigquery.ScalarQueryParameter("date_str", "STRING", f"{date_prefix}%"),
+    ]
+
+    sql = f"""
+    SELECT target_time, predicted_temp
+    FROM `{_pred_table_ref()}`
+    WHERE city_id = @city_id
+      AND CAST(target_time AS STRING) LIKE @date_str
+    ORDER BY target_time
+    """
+    job = client.query(
+        sql,
+        job_config=bigquery.QueryJobConfig(query_parameters=params),
+    )
+    rows = list(job.result())
+    
+    if not rows:
+        return pd.DataFrame()
+
+    records = [{"target_time": row["target_time"], "predicted_temp": row["predicted_temp"]} for row in rows]
+    return pd.DataFrame(records)
