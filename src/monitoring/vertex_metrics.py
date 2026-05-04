@@ -17,10 +17,13 @@ def log_retrain_metrics(version_tag: str, all_metrics: dict, decision: str) -> N
     metric_payload = {}
     for key, value in all_metrics.items():
         if isinstance(value, dict) and "mae" in value:
-            v = float(value["mae"])
-            # Skip NaN / Infinity — Vertex AI rejects them
-            if math.isfinite(v):
-                metric_payload[f"{key}_mae"] = v
+            try:
+                v = float(value["mae"])
+            except (TypeError, ValueError):
+                continue
+            # Skip NaN / Infinity / absurd values — Vertex AI rejects them
+            if math.isfinite(v) and v < 1000:
+                metric_payload[f"{key}_mae"] = round(v, 4)
 
     if not metric_payload:
         return

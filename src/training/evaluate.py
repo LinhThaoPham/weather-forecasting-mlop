@@ -71,7 +71,9 @@ def compare_models(
 def evaluate_prophet(model, df_test, mode: str = "hourly") -> dict:
     """Evaluate Prophet model on test data."""
     try:
-        forecast = model.predict(df_test[["ds", "humidity", "cloud_cover"]])
+        # Prophet.predict() only requires 'ds'; it auto-creates needed columns
+        future_df = df_test[["ds"]].copy()
+        forecast = model.predict(future_df)
         y_true = df_test["y"].values
         y_pred = forecast["yhat"].values
         min_len = min(len(y_true), len(y_pred))
