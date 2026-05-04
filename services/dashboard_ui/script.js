@@ -57,48 +57,75 @@ function getWeatherInfo(code) {
 }
 
 
-// ============== FETCH CURRENT WEATHER ==============
+// ============== FETCH CURRENT WEATHER (FROM MODEL PREDICTION) ==============
 async function loadCurrentWeather(city) {
   try {
-    const res = await fetch(`${DATA_API}/current?city=${city}`);
+    // Gọi Forecast API để lấy dự báo từ model Prophet + LSTM
+    const res = await fetch(`${FORECAST_API}/predict`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ city: city, mode: "hourly", hours: 24, days: 1 })
+    });
+
     if (!res.ok) throw new Error(`HTTP ${res.status}`);
-    const data = await res.json();
+    const json = await res.json();
 
-    if (data.error) throw new Error(data.error);
+    if (json.status !== "success" || !json.data || json.data.length === 0) {
+      throw new Error(json.message || "No prediction data");
+    }
 
-    const weatherInfo = getWeatherInfo(data.weather_code || 0);
+    // Lấy điểm dự báo gần nhất (giờ tiếp theo) làm "hiện tại"
+    const firstPoint = json.data[0];
+    const predictedTemp = parseFloat(firstPoint.final_pred);
+    const cityName = json.city_name || CITY_NAMES[city] || city;
+    const now = new Date();
+    const timeStr = now.toLocaleString("vi-VN", { year: "numeric", month: "2-digit", day: "2-digit", hour: "2-digit", minute: "2-digit" });
+
+    // Ước lượng weather code dựa trên nhiệt độ dự báo
+    let weatherCode = 0; // Trời quang (mặc định)
+    if (predictedTemp < 15) weatherCode = 45;  // Sương mù / lạnh
+    else if (predictedTemp > 35) weatherCode = 0; // Nắng nóng
+    else if (predictedTemp > 28) weatherCode = 1; // Ít mây
+    else weatherCode = 2; // Có mây
+
+    const weatherInfo = getWeatherInfo(weatherCode);
+
+    // Tính min/max từ 24h dự báo
+    const allTemps = json.data.map(d => parseFloat(d.final_pred));
+    const minTemp = Math.min(...allTemps).toFixed(1);
+    const maxTemp = Math.max(...allTemps).toFixed(1);
 
     // Update hero section
-    document.getElementById("heroCityName").textContent = `${data.city}, VN`;
-    document.getElementById("heroTemp").textContent = `${Math.round(data.temperature)}°`;
-    document.getElementById("heroWeatherDesc").textContent = weatherInfo.desc;
+    document.getElementById("heroCityName").textContent = `${cityName}, VN`;
+    document.getElementById("heroTemp").textContent = `${Math.round(predictedTemp)}°`;
+    document.getElementById("heroWeatherDesc").textContent = `${weatherInfo.desc} (Dự báo AI)`;
     document.getElementById("heroWeatherIcon").textContent = weatherInfo.icon;
-    document.getElementById("heroHumidity").textContent = `💧 Độ ẩm: ${data.humidity}%`;
-    document.getElementById("heroWind").textContent = `💨 Gió: ${data.wind_speed} km/h`;
-    document.getElementById("heroCloud").textContent = `☁️ Mây: ${data.cloud_cover}%`;
+    document.getElementById("heroHumidity").textContent = `🌡️ Min: ${minTemp}°C`;
+    document.getElementById("heroWind").textContent = `🌡️ Max: ${maxTemp}°C`;
+    document.getElementById("heroCloud").textContent = `🤖 Prophet + LSTM`;
 
     // Update conditions panel
-    document.getElementById("condHumidity").textContent = `${data.humidity}%`;
-    document.getElementById("condWind").textContent = `${data.wind_speed} km/h`;
-    document.getElementById("condCloud").textContent = `${data.cloud_cover}%`;
-    document.getElementById("condTemp").textContent = `${data.temperature}°C`;
+    document.getElementById("condHumidity").textContent = `${minTemp}°C`;
+    document.getElementById("condWind").textContent = `${maxTemp}°C`;
+    document.getElementById("condCloud").textContent = `24h`;
+    document.getElementById("condTemp").textContent = `${predictedTemp.toFixed(1)}°C`;
 
     // Update header
-    document.getElementById("headerCityName").textContent = data.city;
-    document.getElementById("headerTimestamp").textContent = data.time;
+    document.getElementById("headerCityName").textContent = cityName;
+    document.getElementById("headerTimestamp").textContent = timeStr;
 
     // API status
-    document.getElementById("apiStatusBadge").textContent = "● Live";
+    document.getElementById("apiStatusBadge").textContent = "● AI Predict";
     document.getElementById("apiStatusBadge").className = "text-xs bg-green-100 text-green-700 px-3 py-1 rounded-full font-semibold";
-    document.getElementById("modelStatus").textContent = "✓ Kết nối thành công";
+    document.getElementById("modelStatus").textContent = "✓ Model dự báo thành công";
 
-    console.log(`✓ Current weather loaded for ${city}`);
+    console.log(`✓ AI prediction loaded for ${city}: ${predictedTemp.toFixed(1)}°C`);
   } catch (e) {
-    console.error("Error loading current weather:", e);
+    console.error("Error loading AI prediction:", e);
     document.getElementById("apiStatusBadge").textContent = "● Offline";
     document.getElementById("apiStatusBadge").className = "text-xs bg-red-100 text-red-700 px-3 py-1 rounded-full font-semibold";
-    document.getElementById("modelStatus").textContent = "✗ Không kết nối được";
-    document.getElementById("heroWeatherDesc").textContent = "Không kết nối API";
+    document.getElementById("modelStatus").textContent = "✗ Không lấy được dự báo";
+    document.getElementById("heroWeatherDesc").textContent = "Không kết nối Model API";
   }
 }
 
