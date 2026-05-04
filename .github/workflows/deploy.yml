@@ -36,6 +36,14 @@ jobs:
       - name: Configure Docker Auth
         run: gcloud auth configure-docker asia-southeast1-docker.pkg.dev --quiet
 
+      - name: Download Data and Models from GCS
+        run: |
+          mkdir -p models/current data
+          gcloud storage cp gs://${{ env.PROJECT_ID }}-models/models/current/* ./models/current/ || echo "No models found"
+          gcloud storage cp gs://${{ env.PROJECT_ID }}-models/models/registry.json ./models/ || echo "No registry found"
+          gcloud storage cp gs://${{ env.PROJECT_ID }}-models/models/training_history.json ./models/ || echo "No history found"
+          gcloud storage cp gs://${{ env.PROJECT_ID }}-models/data/weather_forecast.db ./data/ || echo "No DB found"
+
       # BUILD và PUSH Backend Image
       - name: Build and Push Backend Docker Image
         run: |
