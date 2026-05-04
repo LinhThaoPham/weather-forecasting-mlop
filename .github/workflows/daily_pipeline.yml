@@ -55,17 +55,29 @@ jobs:
           ENABLE_VERTEX_METRICS: "false"
         run: |
           echo "🔄 Running daily pipeline..."
-          OUTPUT=$(python daily_pipeline.py 2>&1)
-          echo "$OUTPUT"
+
+          # Tạo thư mục cần thiết
+          mkdir -p data models/current
+
+          # Chạy pipeline và in ra log trực tiếp (không ẩn lỗi)
+          set +e   # Không thoát ngay khi lỗi
+          python daily_pipeline.py 2>&1 | tee /tmp/pipeline_output.txt
+          EXIT_CODE=${PIPESTATUS[0]}
+          set -e
+
+          echo "Exit code: $EXIT_CODE"
 
           # Kiểm tra drift từ output
-          if echo "$OUTPUT" | grep -q "RETRAIN\|DRIFT DETECTED\|should_retrain.*true"; then
+          if grep -q "RETRAIN\|DRIFT DETECTED\|should_retrain.*true" /tmp/pipeline_output.txt; then
             echo "drift_detected=true" >> $GITHUB_OUTPUT
             echo "⚠️ Drift detected! Will trigger retrain."
           else
             echo "drift_detected=false" >> $GITHUB_OUTPUT
             echo "✅ No drift detected."
           fi
+
+          # Thoát với exit code gốc
+          exit $EXIT_CODE
 
       - name: Create drift alert issue (if drift)
         if: steps.drift.outputs.drift_detected == 'true'

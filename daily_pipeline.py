@@ -250,8 +250,12 @@ def main():
     print("\n[STEP 1] Fetching actual weather data...")
     step_fetch_today()
 
-    # Step 2: DB Stats
-    step_db_stats()
+    # Step 2: DB Stats (chỉ khi dùng SQLite local)
+    from src.config.gcp import USE_BIGQUERY
+    if not USE_BIGQUERY:
+        step_db_stats()
+    else:
+        print("\n[STEP 2] Using BigQuery — skipping SQLite stats")
 
     # Step 3: Drift Detection
     print("\n[STEP 3] Checking model drift...")
