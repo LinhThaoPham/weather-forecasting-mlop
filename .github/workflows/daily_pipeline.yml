@@ -33,10 +33,9 @@ jobs:
       - name: Set up Cloud SDK
         uses: google-github-actions/setup-gcloud@v2
 
-      - name: Download DB from GCS
+      - name: Download models from GCS
         run: |
-          mkdir -p data models/current
-          gcloud storage cp gs://${{ env.PROJECT_ID }}-models/data/weather_forecast.db ./data/ || echo "⚠ No DB, will create"
+          mkdir -p models/current
           gcloud storage cp gs://${{ env.PROJECT_ID }}-models/models/current/* ./models/current/ || echo "⚠ No models found"
 
       - name: Install dependencies
@@ -47,8 +46,8 @@ jobs:
         id: drift
         env:
           PYTHONPATH: ${{ github.workspace }}
-          USE_GCS: "false"         # Dùng local DB đã download
-          USE_BIGQUERY: "false"
+          USE_GCS: "true"
+          USE_BIGQUERY: "true"
           ENABLE_VERTEX_METRICS: "false"
         run: |
           echo "🔄 Running daily pipeline..."
@@ -63,11 +62,6 @@ jobs:
             echo "drift_detected=false" >> $GITHUB_OUTPUT
             echo "✅ No drift detected."
           fi
-
-      - name: Upload updated DB to GCS
-        run: |
-          gcloud storage cp ./data/weather_forecast.db gs://${{ env.PROJECT_ID }}-models/data/
-          echo "✅ DB uploaded to GCS"
 
       - name: Create drift alert issue (if drift)
         if: steps.drift.outputs.drift_detected == 'true'
