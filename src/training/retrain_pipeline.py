@@ -419,7 +419,7 @@ def run_retrain_pipeline() -> bool:
 
         all_metrics = {**prophet_metrics, **lstm_metrics}
 
-        print("\n[2b/6] Training Prophet extra targets (humidity, wind, cloud)...")
+        print("\n[2b/6] Training Prophet extra targets (humidity, wind, cloud) × 3 cities...")
         extra_metrics = train_prophet_extra_targets(train_dir)
         all_metrics.update(extra_metrics)
 
