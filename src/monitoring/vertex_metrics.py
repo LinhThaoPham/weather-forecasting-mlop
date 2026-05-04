@@ -13,10 +13,14 @@ def log_retrain_metrics(version_tag: str, all_metrics: dict, decision: str) -> N
     if not ENABLE_VERTEX_METRICS:
         return
 
+    import math
     metric_payload = {}
     for key, value in all_metrics.items():
         if isinstance(value, dict) and "mae" in value:
-            metric_payload[f"{key}_mae"] = float(value["mae"])
+            v = float(value["mae"])
+            # Skip NaN / Infinity — Vertex AI rejects them
+            if math.isfinite(v):
+                metric_payload[f"{key}_mae"] = v
 
     if not metric_payload:
         return

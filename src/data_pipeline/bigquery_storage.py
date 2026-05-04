@@ -140,7 +140,7 @@ def append_historical_rows(city_id: str, rows: list[dict[str, Any]]) -> int:
 def fetch_historical_df(city_id: str | None = None) -> pd.DataFrame:
     """Read historical rows from BigQuery into DataFrame.
 
-    Returns only timestamp + temperature (Prophet is pure time-series).
+    Returns timestamp + all weather variables for multi-variable Prophet training.
     """
     if not USE_BIGQUERY:
         raise ValueError("USE_BIGQUERY is disabled")
@@ -155,7 +155,8 @@ def fetch_historical_df(city_id: str | None = None) -> pd.DataFrame:
         params.append(bigquery.ScalarQueryParameter("city_id", "STRING", city_id))
 
     sql = f"""
-    SELECT city_id, timestamp, temperature
+    SELECT city_id, timestamp, temperature, humidity, cloud_cover,
+           wind_speed, apparent_temp, precipitation, pressure
     FROM `{_table_ref()}`
     {where_clause}
     ORDER BY timestamp
@@ -166,13 +167,22 @@ def fetch_historical_df(city_id: str | None = None) -> pd.DataFrame:
     )
     rows = list(job.result())
     if not rows:
-        return pd.DataFrame(columns=["city_id", "timestamp", "temperature"])
+        return pd.DataFrame(columns=[
+            "city_id", "timestamp", "temperature", "humidity",
+            "cloud_cover", "wind_speed", "apparent_temp", "precipitation", "pressure"
+        ])
 
     records = []
     for row in rows:
         records.append({
-            "city_id": row["city_id"],
-            "timestamp": row["timestamp"],
-            "temperature": row["temperature"],
+            "city_id":       row["city_id"],
+            "timestamp":     row["timestamp"],
+            "temperature":   row["temperature"],
+            "humidity":      row["humidity"],
+            "cloud_cover":   row["cloud_cover"],
+            "wind_speed":    row["wind_speed"],
+            "apparent_temp": row["apparent_temp"],
+            "precipitation": row["precipitation"],
+            "pressure":      row["pressure"],
         })
     return pd.DataFrame(records)
