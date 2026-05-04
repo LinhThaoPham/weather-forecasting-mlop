@@ -9,6 +9,10 @@ env:
   PROJECT_ID: weather-forecasting-494811
   REGION: asia-southeast1
 
+permissions:
+  contents: read
+  issues: write
+
 jobs:
   daily-pipeline:
     runs-on: ubuntu-latest
