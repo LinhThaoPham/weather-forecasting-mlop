@@ -1,0 +1,91 @@
+name: Retrain Models (Cloud Run Job)
+
+on:
+  workflow_dispatch:
+    inputs:
+      reason:
+        description: 'Reason for retraining'
+        required: false
+        default: 'Manual trigger'
+  workflow_call:     # Cho phép daily_pipeline.yml gọi workflow này
+
+env:
+  PROJECT_ID: weather-forecasting-494811
+  REGION: asia-southeast1
+  JOB_NAME: retrain-job
+  IMAGE_NAME: asia-southeast1-docker.pkg.dev/weather-forecasting-494811/weather-forecasting/weather-forecasting-mlops:latest
+
+jobs:
+  retrain:
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Authenticate to Google Cloud
+        uses: google-github-actions/auth@v2
+        with:
+          credentials_json: ${{ secrets.GCP_CREDENTIALS }}
+
+      - name: Set up Cloud SDK
+        uses: google-github-actions/setup-gcloud@v2
+
+      - name: Update Cloud Run Job image (lấy code mới nhất)
+        run: |
+          echo "🔧 Rebuilding Docker image with latest code..."
+          gcloud auth configure-docker asia-southeast1-docker.pkg.dev --quiet
+          docker build -t ${{ env.IMAGE_NAME }} .
+          docker push ${{ env.IMAGE_NAME }}
+
+          echo "📦 Updating Cloud Run Job to use new image..."
+          gcloud run jobs update ${{ env.JOB_NAME }} \
+            --image ${{ env.IMAGE_NAME }} \
+            --region ${{ env.REGION }} || \
+          gcloud run jobs create ${{ env.JOB_NAME }} \
+            --image ${{ env.IMAGE_NAME }} \
+            --command "python" \
+            --args "src/training/retrain_pipeline.py" \
+            --region ${{ env.REGION }} \
+            --memory 4Gi \
+            --cpu 4 \
+            --task-timeout 3600 \
+            --max-retries 1 \
+            --set-env-vars "USE_GCS=true,USE_BIGQUERY=false,ENABLE_VERTEX_METRICS=true,GCS_BUCKET_NAME=${{ env.PROJECT_ID }}-models,GCP_PROJECT_ID=${{ env.PROJECT_ID }},GCP_REGION=${{ env.REGION }}"
+
+      - name: Execute retrain job on GCP
+        run: |
+          echo "🚀 Triggering retrain on Cloud Run..."
+          echo "Reason: ${{ github.event.inputs.reason || 'Auto-triggered by drift detection' }}"
+
+          gcloud run jobs execute ${{ env.JOB_NAME }} \
+            --region ${{ env.REGION }} \
+            --wait
+
+          echo "✅ Retrain job completed!"
+
+      - name: Deploy updated models to Cloud Run services
+        run: |
+          echo "📥 Downloading new models from GCS..."
+          mkdir -p models/current
+          gcloud storage cp gs://${{ env.PROJECT_ID }}-models/models/current/* ./models/current/
+
+          echo "🐳 Rebuilding Docker image with new models..."
+          docker build -t ${{ env.IMAGE_NAME }} .
+          docker push ${{ env.IMAGE_NAME }}
+
+          echo "🚀 Deploying to Cloud Run services..."
+          for SERVICE in data-api prophet-api lstm-api forecast-api; do
+            gcloud run services update $SERVICE \
+              --image ${{ env.IMAGE_NAME }} \
+              --region ${{ env.REGION }} && echo "✅ $SERVICE updated" || echo "⚠ $SERVICE failed"
+          done
+
+      - name: Summary
+        run: |
+          echo "=================================="
+          echo "✅ RETRAIN + DEPLOY COMPLETE"
+          echo "  Models: gs://${{ env.PROJECT_ID }}-models/models/current/"
+          echo "  Services: data-api, prophet-api, lstm-api, forecast-api"
+          echo "=================================="

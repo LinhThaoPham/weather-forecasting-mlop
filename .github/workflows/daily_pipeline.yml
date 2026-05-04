@@ -1,0 +1,90 @@
+name: Daily Pipeline (Data + Drift Check)
+
+on:
+  schedule:
+    - cron: '0 1 * * *'   # 8:00 AM Vietnam time (UTC+7) mỗi ngày
+  workflow_dispatch:        # Cho phép chạy tay
+
+env:
+  PROJECT_ID: weather-forecasting-494811
+  REGION: asia-southeast1
+
+jobs:
+  daily-pipeline:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    outputs:
+      drift_detected: ${{ steps.drift.outputs.drift_detected }}
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Authenticate to Google Cloud
+        uses: google-github-actions/auth@v2
+        with:
+          credentials_json: ${{ secrets.GCP_CREDENTIALS }}
+
+      - name: Set up Cloud SDK
+        uses: google-github-actions/setup-gcloud@v2
+
+      - name: Download DB from GCS
+        run: |
+          mkdir -p data models/current
+          gcloud storage cp gs://${{ env.PROJECT_ID }}-models/data/weather_forecast.db ./data/ || echo "⚠ No DB, will create"
+          gcloud storage cp gs://${{ env.PROJECT_ID }}-models/models/current/* ./models/current/ || echo "⚠ No models found"
+
+      - name: Install dependencies
+        run: |
+          pip install --quiet -r requirements.txt
+
+      - name: Run Daily Pipeline
+        id: drift
+        env:
+          PYTHONPATH: ${{ github.workspace }}
+          USE_GCS: "false"         # Dùng local DB đã download
+          USE_BIGQUERY: "false"
+          ENABLE_VERTEX_METRICS: "false"
+        run: |
+          echo "🔄 Running daily pipeline..."
+          OUTPUT=$(python daily_pipeline.py 2>&1)
+          echo "$OUTPUT"
+
+          # Kiểm tra drift từ output
+          if echo "$OUTPUT" | grep -q "RETRAIN\|DRIFT DETECTED\|should_retrain.*true"; then
+            echo "drift_detected=true" >> $GITHUB_OUTPUT
+            echo "⚠️ Drift detected! Will trigger retrain."
+          else
+            echo "drift_detected=false" >> $GITHUB_OUTPUT
+            echo "✅ No drift detected."
+          fi
+
+      - name: Upload updated DB to GCS
+        run: |
+          gcloud storage cp ./data/weather_forecast.db gs://${{ env.PROJECT_ID }}-models/data/
+          echo "✅ DB uploaded to GCS"
+
+      - name: Create drift alert issue (if drift)
+        if: steps.drift.outputs.drift_detected == 'true'
+        uses: actions/github-script@v7
+        with:
+          script: |
+            github.rest.issues.create({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              title: `🔴 Model Drift Detected - ${new Date().toISOString().split('T')[0]}`,
+              body: `## Model Drift Alert\n\nDrift detected during daily pipeline run.\n\nRetrain job will be triggered automatically.\n\n**Run:** [${context.runId}](${context.serverUrl}/${context.repo.owner}/${context.repo.repo}/actions/runs/${context.runId})`,
+              labels: ['drift', 'auto-retrain']
+            })
+
+  # Trigger retrain nếu drift
+  trigger-retrain:
+    needs: daily-pipeline
+    if: needs.daily-pipeline.outputs.drift_detected == 'true'
+    uses: ./.github/workflows/retrain.yml
+    secrets: inherit
