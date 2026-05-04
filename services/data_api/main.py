@@ -221,7 +221,9 @@ def get_forecast(days: int = 3, city: str = "hanoi"):
 
         with get_connection() as conn:
             rows = conn.execute(
-                """SELECT target_time, predicted_temp, model_version, created_at
+                """SELECT target_time, predicted_temp, predicted_humidity,
+                          predicted_wind_speed, predicted_cloud_cover,
+                          model_version, created_at
                    FROM weather_ai_predictions
                    WHERE city_id = ?
                    ORDER BY target_time
@@ -243,6 +245,9 @@ def get_forecast(days: int = 3, city: str = "hanoi"):
                     "hourly": {
                         "time": [d["target_time"] for d in data],
                         "temperature_2m": [d["predicted_temp"] for d in data],
+                        "humidity": [d["predicted_humidity"] for d in data],
+                        "wind_speed": [d["predicted_wind_speed"] for d in data],
+                        "cloud_cover": [d["predicted_cloud_cover"] for d in data],
                     }
                 },
             }
@@ -255,7 +260,7 @@ def get_forecast(days: int = 3, city: str = "hanoi"):
             "forecast_days": days,
             "source": "none",
             "message": "No AI predictions available yet. Run daily_pipeline.py first.",
-            "data": {"hourly": {"time": [], "temperature_2m": []}},
+            "data": {"hourly": {"time": [], "temperature_2m": [], "humidity": [], "wind_speed": [], "cloud_cover": []}},
         }
 
     except Exception as e:

@@ -159,6 +159,21 @@ def step_save_predictions():
                 print(f"  ⚠ Prophet API unavailable for {city_id}: {e}")
                 prophet_preds = None
 
+            # Get extra variable predictions (humidity, wind, cloud)
+            extra_vars = {}
+            try:
+                from src.config.settings import PROPHET_API_URL
+                resp_extra = requests.post(
+                    f"{PROPHET_API_URL}/forecast_multi_var",
+                    json={"data": data, "city": city_id},
+                    timeout=30,
+                )
+                extra_result = resp_extra.json()
+                if extra_result.get("status") == "success":
+                    extra_vars = extra_result.get("predictions", {})
+            except Exception as e:
+                print(f"  ⚠ Prophet multi-var unavailable for {city_id}: {e}")
+
             # Ensemble
             if prophet_preds is not None and lstm_preds is not None:
                 min_len = min(len(prophet_preds), len(lstm_preds))
@@ -171,18 +186,26 @@ def step_save_predictions():
                 print(f"  ⚠ No model available for {city_id}")
                 continue
 
-            # Save to DB
+            # Save to DB (with multi-variable predictions)
+            n_preds = min(len(final_preds), len(future_times))
+            humidity_preds = extra_vars.get("humidity")
+            wind_preds = extra_vars.get("wind_speed")
+            cloud_preds = extra_vars.get("cloud_cover")
+
             predictions = [
                 {
                     "target_time": future_times[i].strftime("%Y-%m-%d %H:%M:%S"),
                     "predicted_temp": round(float(final_preds[i]), 1),
+                    "predicted_humidity": round(float(humidity_preds[i]), 1) if humidity_preds and i < len(humidity_preds) else None,
+                    "predicted_wind_speed": round(float(wind_preds[i]), 1) if wind_preds and i < len(wind_preds) else None,
+                    "predicted_cloud_cover": round(float(cloud_preds[i]), 1) if cloud_preds and i < len(cloud_preds) else None,
                 }
-                for i in range(min(len(final_preds), len(future_times)))
+                for i in range(n_preds)
             ]
 
             saved = save_ai_predictions(city_id, predictions, version_tag)
             total_saved += saved
-            print(f"  ✓ {city_id}: {saved} predictions saved")
+            print(f"  ✓ {city_id}: {saved} predictions saved (temp + humidity + wind + cloud)")
 
         except Exception as e:
             print(f"  ⚠ Failed for {city_id}: {e}")

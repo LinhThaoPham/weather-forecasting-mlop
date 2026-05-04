@@ -81,33 +81,45 @@ async function loadCurrentWeather(city) {
     const now = new Date();
     const timeStr = now.toLocaleString("vi-VN", { year: "numeric", month: "2-digit", day: "2-digit", hour: "2-digit", minute: "2-digit" });
 
-    // Ước lượng weather code dựa trên nhiệt độ dự báo
+    // Lấy dự báo humidity, wind, cloud từ model Prophet
+    const predictedHumidity = firstPoint.humidity != null ? parseFloat(firstPoint.humidity) : null;
+    const predictedWind = firstPoint.wind_speed != null ? parseFloat(firstPoint.wind_speed) : null;
+    const predictedCloud = firstPoint.cloud_cover != null ? parseFloat(firstPoint.cloud_cover) : null;
+
+    // Ước lượng weather code dựa trên dự báo cloud_cover + nhiệt độ
     let weatherCode = 0; // Trời quang (mặc định)
-    if (predictedTemp < 15) weatherCode = 45;  // Sương mù / lạnh
-    else if (predictedTemp > 35) weatherCode = 0; // Nắng nóng
-    else if (predictedTemp > 28) weatherCode = 1; // Ít mây
-    else weatherCode = 2; // Có mây
+    if (predictedCloud != null) {
+      if (predictedCloud > 80) weatherCode = 3;    // Nhiều mây
+      else if (predictedCloud > 50) weatherCode = 2; // Có mây
+      else if (predictedCloud > 20) weatherCode = 1; // Ít mây
+      else weatherCode = 0;                          // Trời quang
+    } else {
+      if (predictedTemp < 15) weatherCode = 45;
+      else if (predictedTemp > 35) weatherCode = 0;
+      else if (predictedTemp > 28) weatherCode = 1;
+      else weatherCode = 2;
+    }
 
     const weatherInfo = getWeatherInfo(weatherCode);
 
-    // Tính min/max từ 24h dự báo
-    const allTemps = json.data.map(d => parseFloat(d.final_pred));
-    const minTemp = Math.min(...allTemps).toFixed(1);
-    const maxTemp = Math.max(...allTemps).toFixed(1);
+    // Format hiển thị
+    const humidityStr = predictedHumidity != null ? `${Math.round(predictedHumidity)}%` : "N/A";
+    const windStr = predictedWind != null ? `${predictedWind.toFixed(1)} km/h` : "N/A";
+    const cloudStr = predictedCloud != null ? `${Math.round(predictedCloud)}%` : "N/A";
 
     // Update hero section
     document.getElementById("heroCityName").textContent = `${cityName}, VN`;
     document.getElementById("heroTemp").textContent = `${Math.round(predictedTemp)}°`;
     document.getElementById("heroWeatherDesc").textContent = `${weatherInfo.desc} (Dự báo AI)`;
     document.getElementById("heroWeatherIcon").textContent = weatherInfo.icon;
-    document.getElementById("heroHumidity").textContent = `🌡️ Min: ${minTemp}°C`;
-    document.getElementById("heroWind").textContent = `🌡️ Max: ${maxTemp}°C`;
-    document.getElementById("heroCloud").textContent = `🤖 Prophet + LSTM`;
+    document.getElementById("heroHumidity").textContent = `💧 Độ ẩm: ${humidityStr}`;
+    document.getElementById("heroWind").textContent = `💨 Gió: ${windStr}`;
+    document.getElementById("heroCloud").textContent = `☁️ Mây: ${cloudStr}`;
 
     // Update conditions panel
-    document.getElementById("condHumidity").textContent = `${minTemp}°C`;
-    document.getElementById("condWind").textContent = `${maxTemp}°C`;
-    document.getElementById("condCloud").textContent = `24h`;
+    document.getElementById("condHumidity").textContent = humidityStr;
+    document.getElementById("condWind").textContent = windStr;
+    document.getElementById("condCloud").textContent = cloudStr;
     document.getElementById("condTemp").textContent = `${predictedTemp.toFixed(1)}°C`;
 
     // Update header
@@ -117,9 +129,9 @@ async function loadCurrentWeather(city) {
     // API status
     document.getElementById("apiStatusBadge").textContent = "● AI Predict";
     document.getElementById("apiStatusBadge").className = "text-xs bg-green-100 text-green-700 px-3 py-1 rounded-full font-semibold";
-    document.getElementById("modelStatus").textContent = "✓ Model dự báo thành công";
+    document.getElementById("modelStatus").textContent = "✓ Dự báo AI (Nhiệt độ + Độ ẩm + Gió + Mây)";
 
-    console.log(`✓ AI prediction loaded for ${city}: ${predictedTemp.toFixed(1)}°C`);
+    console.log(`✓ AI prediction loaded for ${city}: ${predictedTemp.toFixed(1)}°C, humidity=${humidityStr}, wind=${windStr}, cloud=${cloudStr}`);
   } catch (e) {
     console.error("Error loading AI prediction:", e);
     document.getElementById("apiStatusBadge").textContent = "● Offline";

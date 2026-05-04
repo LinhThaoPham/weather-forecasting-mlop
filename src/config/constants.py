@@ -33,6 +33,11 @@ EARLY_STOP_PATIENCE = 10
 PROPHET_WEIGHT = 0.6
 LSTM_WEIGHT = 0.4
 
+# Multi-variable prediction targets
+# temperature = LSTM + Prophet ensemble, others = Prophet only
+WEATHER_TARGETS = ["temperature", "humidity", "wind_speed", "cloud_cover"]
+PROPHET_EXTRA_TARGETS = ["humidity", "wind_speed", "cloud_cover"]
+
 # Evaluation
 MAE_REGRESSION_THRESHOLD = 0.10
 
@@ -44,15 +49,18 @@ HOURLY_LAG_LIST = [1, 2, 3, 6, 12, 24]
 DAILY_LAG_LIST = [1, 2, 3, 7]
 
 
-def model_filename(model_type: str, mode: str, city: str = "") -> str:
+def model_filename(model_type: str, mode: str, city: str = "", target: str = "") -> str:
     """Generate consistent model filename. ASCII-safe.
 
     Prophet = per-city (city required), LSTM = multi-city (no city suffix).
+    target: for multi-variable Prophet (e.g. 'humidity', 'wind_speed').
+           Empty or 'temperature' = default (backward compatible).
     """
     ext = "json" if model_type == "prophet" else "h5"
+    target_suffix = f"_{target}" if target and target != "temperature" else ""
     if city:
-        return f"{model_type}_{mode}_{city}.{ext}"
-    return f"{model_type}_{mode}.{ext}"
+        return f"{model_type}_{mode}_{city}{target_suffix}.{ext}"
+    return f"{model_type}_{mode}{target_suffix}.{ext}"
 
 
 def scaler_filename(mode: str) -> str:

@@ -122,6 +122,26 @@ def call_prophet_api(future_ds: list[str], mode: str = "hourly", city: str = "ha
         return None
 
 
+def call_prophet_multi_var(future_ds: list[str], city: str = "hanoi"):
+    """Call Prophet API to get humidity, wind_speed, cloud_cover predictions."""
+    try:
+        data = [{"ds": ds} for ds in future_ds]
+        response = requests.post(
+            f"{PROPHET_API_URL}/forecast_multi_var",
+            json={"data": data, "city": city},
+            timeout=SERVICE_CALL_TIMEOUT,
+        )
+        result = response.json()
+        if result.get("status") == "success":
+            return result.get("predictions", {})
+        else:
+            print(f"⚠ Prophet multi-var error: {result}")
+            return {}
+    except Exception as e:
+        print(f"⚠ Prophet multi-var call failed: {e}")
+        return {}
+
+
 def call_lstm_api_multi_city(city_temps: dict[str, list[float]], mode: str = "hourly"):
     """Call LSTM API with multi-city temperature data.
 
@@ -259,6 +279,16 @@ def predict_weather(hours=72, days=3, mode="hourly", city="hanoi"):
             'lstm_pred': lstm_preds[:out_len].tolist() if lstm_preds is not None else [None] * out_len,
             'final_pred': np.array(final_preds[:out_len]).tolist(),
         })
+
+        # ── Step 6: Get extra variables from Prophet multi-var ──
+        extra_vars = call_prophet_multi_var(future_ds, city=city)
+        if extra_vars:
+            for var_name, var_preds in extra_vars.items():
+                if var_preds and len(var_preds) >= out_len:
+                    df_out[var_name] = [round(v, 1) for v in var_preds[:out_len]]
+                elif var_preds:
+                    padded = var_preds + [var_preds[-1]] * (out_len - len(var_preds))
+                    df_out[var_name] = [round(v, 1) for v in padded[:out_len]]
 
         df_out = df_out.astype(object).where(pd.notnull(df_out), None)
         return df_out

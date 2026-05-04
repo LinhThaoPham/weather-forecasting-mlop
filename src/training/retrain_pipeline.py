@@ -37,6 +37,7 @@ from src.config.constants import (
     HOURLY_HORIZON,
     MAX_EPOCHS,
     NUM_CITIES,
+    PROPHET_EXTRA_TARGETS,
     RETRAIN_INTERVAL_DAYS,
     TRAIN_SPLIT_RATIO,
     model_filename,
@@ -61,6 +62,9 @@ MODEL_FILES = []
 for _cid in CITY_IDS:
     MODEL_FILES.append(model_filename("prophet", "hourly", _cid))
     MODEL_FILES.append(model_filename("prophet", "daily", _cid))
+    # Extra target Prophet models (humidity, wind_speed, cloud_cover)
+    for _target in PROPHET_EXTRA_TARGETS:
+        MODEL_FILES.append(model_filename("prophet", "hourly", _cid, _target))
 MODEL_FILES.extend([
     model_filename("lstm", "hourly"),
     model_filename("lstm", "daily"),
@@ -164,11 +168,11 @@ def reload_services() -> dict:
     return results
 
 
-def fetch_training_data(city: str = DEFAULT_CITY):
+def fetch_training_data(city: str = DEFAULT_CITY, target_col: str = "temperature"):
     """Fetch training data FROM SQLite for a single city.
 
     Returns DataFrame with columns: ds, y
-    Prophet is pure time-series — no exogenous variables needed.
+    target_col: which weather variable to fetch ('temperature', 'humidity', 'wind_speed', 'cloud_cover')
     """
     import pandas as pd
 
@@ -177,14 +181,14 @@ def fetch_training_data(city: str = DEFAULT_CITY):
         bq_df = fetch_historical_df(city_id=city)
         if bq_df.empty:
             raise ValueError(f"No historical data in BigQuery for city={city}.")
-        df = bq_df.rename(columns={"timestamp": "ds", "temperature": "y"})[
+        df = bq_df.rename(columns={"timestamp": "ds", target_col: "y"})[
             ["ds", "y"]
         ]
     else:
         from src.config.db import get_connection
         with get_connection() as conn:
             rows = conn.execute(
-                """SELECT timestamp, temperature
+                f"""SELECT timestamp, {target_col}
                    FROM weather_historical
                    WHERE city_id = ?
                    ORDER BY timestamp""",
@@ -238,6 +242,43 @@ def train_prophet_models(train_dir: str) -> dict:
         d_metrics = evaluate_prophet(prophet_daily, daily_test, mode="daily")
         metrics[f"prophet_daily_{city_id}"] = d_metrics
         print(f"   ✓ Daily  — MAE: {d_metrics['mae']}°C")
+
+    return metrics
+
+
+def train_prophet_extra_targets(train_dir: str) -> dict:
+    """Train Prophet models for humidity, wind_speed, cloud_cover (hourly only)."""
+    from src.data_pipeline.feature_engineering import add_features
+    from src.models_logic.prophet_model import train_prophet, save_prophet
+    from src.training.evaluate import evaluate_prophet
+
+    metrics = {}
+
+    for target in PROPHET_EXTRA_TARGETS:
+        for city_id in CITY_IDS:
+            try:
+                print(f"   --- Prophet {target}: {city_id} ---")
+                weather_data = fetch_training_data(city_id, target_col=target)
+
+                if len(weather_data) < 100:
+                    print(f"   ⚠ Skipped {target}/{city_id}: only {len(weather_data)} rows")
+                    continue
+
+                hourly_data = add_features(weather_data.copy(), is_hourly=True)
+                split_idx = int(len(hourly_data) * TRAIN_SPLIT_RATIO)
+                hourly_train = hourly_data.iloc[:split_idx]
+                hourly_test = hourly_data.iloc[split_idx:]
+
+                prophet_model = train_prophet(hourly_train, is_hourly=True)
+                fname = model_filename("prophet", "hourly", city_id, target)
+                save_prophet(prophet_model, os.path.join(train_dir, fname))
+
+                h_metrics = evaluate_prophet(prophet_model, hourly_test, mode="hourly")
+                metrics[f"prophet_hourly_{city_id}_{target}"] = h_metrics
+                print(f"   ✓ {target}/{city_id} — MAE: {h_metrics['mae']}")
+
+            except Exception as e:
+                print(f"   ⚠ Failed {target}/{city_id}: {e}")
 
     return metrics
 
@@ -377,6 +418,10 @@ def run_retrain_pipeline() -> bool:
         lstm_metrics, lstm_history = train_lstm_models(None, train_dir)
 
         all_metrics = {**prophet_metrics, **lstm_metrics}
+
+        print("\n[2b/6] Training Prophet extra targets (humidity, wind, cloud)...")
+        extra_metrics = train_prophet_extra_targets(train_dir)
+        all_metrics.update(extra_metrics)
 
         print("\n[3/6] Evaluating (new vs old)...")
         decision = evaluate_and_decide(all_metrics)

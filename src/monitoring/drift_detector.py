@@ -159,7 +159,8 @@ def save_ai_predictions(city_id: str, predictions: list[dict], model_version: st
 
     Args:
         city_id: city identifier
-        predictions: list of {"target_time": str, "predicted_temp": float}
+        predictions: list of dicts with target_time, predicted_temp,
+                     and optionally: predicted_humidity, predicted_wind_speed, predicted_cloud_cover
         model_version: version tag (e.g. "v_2026-05-03")
 
     Returns:
@@ -168,10 +169,19 @@ def save_ai_predictions(city_id: str, predictions: list[dict], model_version: st
     with get_connection() as conn:
         conn.executemany(
             """INSERT OR REPLACE INTO weather_ai_predictions
-               (city_id, target_time, predicted_temp, model_version)
-               VALUES (?, ?, ?, ?)""",
+               (city_id, target_time, predicted_temp, predicted_humidity,
+                predicted_wind_speed, predicted_cloud_cover, model_version)
+               VALUES (?, ?, ?, ?, ?, ?, ?)""",
             [
-                (city_id, p["target_time"], p["predicted_temp"], model_version)
+                (
+                    city_id,
+                    p["target_time"],
+                    p.get("predicted_temp"),
+                    p.get("predicted_humidity"),
+                    p.get("predicted_wind_speed"),
+                    p.get("predicted_cloud_cover"),
+                    model_version,
+                )
                 for p in predictions
             ],
         )
