@@ -2,7 +2,7 @@
 import numpy as np
 from sklearn.metrics import mean_absolute_error, mean_squared_error
 
-from src.config.constants import MAE_REGRESSION_THRESHOLD
+from src.config.constants import RMSE_TOLERANCE
 
 
 def compute_metrics(y_true: np.ndarray, y_pred: np.ndarray) -> dict:
@@ -41,30 +41,39 @@ def compute_metrics(y_true: np.ndarray, y_pred: np.ndarray) -> dict:
 def compare_models(
     new_metrics: dict,
     old_metrics: dict | None,
-    threshold: float = MAE_REGRESSION_THRESHOLD,
 ) -> str:
-    """Compare new vs old model. Returns 'accept' or 'rollback'."""
+    """Champion/Challenger: new model must be BETTER, not just 'acceptable'.
+
+    Accept only if:
+      1. MAE ≤ old (must improve or tie)
+      2. RMSE not worse by more than RMSE_TOLERANCE (5%)
+    """
     if old_metrics is None:
         return "accept"
 
     old_mae = old_metrics.get("mae", float("inf"))
     new_mae = new_metrics.get("mae", float("inf"))
 
-    if old_mae == 0:
+    # Guard: skip comparison if old metrics are invalid
+    if old_mae == 0 or old_mae == float("inf"):
         return "accept"
 
-    regression = (new_mae - old_mae) / old_mae
-
-    if regression > threshold:
-        print(f"⚠ Model regression: MAE increased by {regression * 100:.1f}% (threshold: {threshold * 100:.0f}%)")
+    # Condition 1: MAE must not increase
+    if new_mae > old_mae:
+        pct = (new_mae - old_mae) / old_mae * 100
+        print(f"⚠ Model regression: MAE {old_mae:.4f} → {new_mae:.4f} (+{pct:.1f}%) → ROLLBACK")
         return "rollback"
 
-    improvement = -regression * 100
-    if improvement > 0:
-        print(f"✓ Model improved: MAE decreased by {improvement:.1f}%")
-    else:
-        print(f"✓ Model acceptable: MAE changed by {regression * 100:.1f}% (within {threshold * 100:.0f}% threshold)")
+    # Condition 2: RMSE must not degrade beyond tolerance
+    old_rmse = old_metrics.get("rmse", float("inf"))
+    new_rmse = new_metrics.get("rmse", float("inf"))
+    if old_rmse > 0 and old_rmse != float("inf"):
+        if new_rmse > old_rmse * (1 + RMSE_TOLERANCE):
+            print(f"⚠ RMSE regression: {old_rmse:.4f} → {new_rmse:.4f} (>{RMSE_TOLERANCE*100:.0f}% tolerance) → ROLLBACK")
+            return "rollback"
 
+    improvement = (old_mae - new_mae) / old_mae * 100
+    print(f"✓ Model improved: MAE {old_mae:.4f} → {new_mae:.4f} (-{improvement:.1f}%)")
     return "accept"
 
 

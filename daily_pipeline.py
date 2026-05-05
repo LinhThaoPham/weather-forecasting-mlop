@@ -49,17 +49,23 @@ def step_db_stats():
     print(f"   AI Predictions: {ai_preds:,} rows")
 
 
-def step_drift_check() -> bool:
-    """Step 3: Compare yesterday's AI predictions vs actual data.
+def step_performance_check() -> bool:
+    """Step 3: Monitor model performance (log MAE, check sustained drift).
 
     Returns:
-        True if retraining is needed, False otherwise.
+        True if retraining is needed (sustained drift + cooldown OK).
     """
-    from src.monitoring.drift_detector import check_drift_all_cities
+    from src.monitoring.drift_detector import check_daily_performance, check_sustained_drift, check_cooldown
 
-    print("\n--- Drift Detection ---")
-    result = check_drift_all_cities()
-    return result["should_retrain"]
+    print("\n--- Performance Monitor ---")
+    check_daily_performance()
+
+    sustained = check_sustained_drift()
+    if not sustained:
+        return False
+
+    cooldown_ok = check_cooldown()
+    return sustained and cooldown_ok
 
 
 def step_retrain():
@@ -257,13 +263,22 @@ def main():
     else:
         print("\n[STEP 2] Using BigQuery — skipping SQLite stats")
 
-    # Step 3: Drift Detection
-    print("\n[STEP 3] Checking model drift...")
-    should_retrain = step_drift_check()
+    # Step 3: Performance Monitor (log MAE, NO instant retrain)
+    print("\n[STEP 3] Monitoring model performance...")
+    should_retrain = step_performance_check()
 
-    # Step 4: Conditional Retrain
+    # Step 4: Save predictions for tomorrow's comparison
+    print("\n[STEP 4] Running inference and saving predictions...")
+    try:
+        step_save_predictions()
+    except Exception as e:
+        print(f"⚠ Save predictions failed: {e}")
+        import traceback
+        traceback.print_exc()
+
+    # Step 5: Conditional Retrain (ONLY on sustained drift + cooldown)
     if should_retrain:
-        print("\n[STEP 4] Drift detected — Retraining models...")
+        print("\n[STEP 5] ⚠ Sustained drift detected — Retraining models...")
         try:
             step_retrain()
         except Exception as e:
@@ -271,16 +286,7 @@ def main():
             import traceback
             traceback.print_exc()
     else:
-        print("\n[STEP 4] No drift — Skipping retrain (model still accurate)")
-
-    # Step 5: Save predictions for tomorrow's drift check
-    print("\n[STEP 5] Running inference and saving predictions...")
-    try:
-        step_save_predictions()
-    except Exception as e:
-        print(f"⚠ Save predictions failed: {e}")
-        import traceback
-        traceback.print_exc()
+        print("\n[STEP 5] No sustained drift — Skipping retrain")
 
     # Step 6: Sync to GCS (for Cloud Run)
     print("\n[STEP 6] Syncing to GCS...")

@@ -317,6 +317,188 @@ def get_training_history():
     return {"entries": _sanitize_json(entries)}
 
 
+@app.get("/model/performance")
+def get_performance_history():
+    """Serve daily MAE performance history for monitoring dashboard."""
+    import json
+    perf_path = os.path.join(MODELS_DIR, "performance_history.json")
+    if not os.path.exists(perf_path):
+        return {"entries": [], "message": "No performance history yet. Run daily_pipeline.py first."}
+
+    with open(perf_path, "r", encoding="utf-8") as f:
+        entries = json.load(f)
+    return {"entries": _sanitize_json(entries), "count": len(entries)}
+
+
+@app.get("/model/alerts")
+def get_model_alerts():
+    """Return active alerts based on model performance monitoring.
+
+    Checks:
+      - Sustained drift (7+ days MAE > threshold)
+      - Cooldown status (days since last retrain)
+      - Recent performance trend
+    """
+    import json
+    from src.config.constants import DRIFT_THRESHOLD, SUSTAINED_DRIFT_DAYS, RETRAIN_COOLDOWN_DAYS
+
+    alerts = []
+
+    # Check performance history for sustained drift
+    perf_path = os.path.join(MODELS_DIR, "performance_history.json")
+    if os.path.exists(perf_path):
+        with open(perf_path, "r", encoding="utf-8") as f:
+            history = json.load(f)
+
+        if history:
+            # Last entry status
+            latest = history[-1]
+            if latest.get("exceeded_threshold"):
+                alerts.append({
+                    "level": "warning",
+                    "type": "threshold_exceeded",
+                    "message": f"MAE ({latest['avg_mae']}°C) exceeded threshold ({DRIFT_THRESHOLD}°C) on {latest['date']}",
+                })
+
+            # Check sustained drift
+            if len(history) >= SUSTAINED_DRIFT_DAYS:
+                recent = history[-SUSTAINED_DRIFT_DAYS:]
+                consecutive = sum(1 for e in recent if e.get("exceeded_threshold", False))
+                if consecutive >= SUSTAINED_DRIFT_DAYS:
+                    alerts.append({
+                        "level": "critical",
+                        "type": "sustained_drift",
+                        "message": f"MAE exceeded threshold for {SUSTAINED_DRIFT_DAYS} consecutive days! Retrain triggered.",
+                    })
+                elif consecutive > 0:
+                    alerts.append({
+                        "level": "info",
+                        "type": "intermittent_drift",
+                        "message": f"{consecutive}/{SUSTAINED_DRIFT_DAYS} recent days exceeded threshold.",
+                    })
+
+    # Check cooldown status from registry
+    registry_path = os.path.join(MODELS_DIR, "registry.json")
+    if os.path.exists(registry_path):
+        with open(registry_path, "r", encoding="utf-8") as f:
+            raw = f.read()
+        raw = raw.replace("Infinity", "null").replace("NaN", "null")
+        registry = json.loads(raw)
+
+        models = registry.get("models", [])
+        if models:
+            last_accepted = None
+            for m in reversed(models):
+                if m.get("decision") == "accept":
+                    last_accepted = m
+                    break
+            if last_accepted:
+                trained_at = last_accepted.get("trained_at", "")
+                try:
+                    trained_date = datetime.fromisoformat(trained_at.split("+")[0])
+                    days_since = (datetime.now() - trained_date).days
+                    alerts.append({
+                        "level": "info",
+                        "type": "cooldown_status",
+                        "message": f"Last retrain: {days_since} days ago (cooldown: {RETRAIN_COOLDOWN_DAYS}d)",
+                        "days_since_retrain": days_since,
+                        "cooldown_active": days_since < RETRAIN_COOLDOWN_DAYS,
+                    })
+                except (ValueError, TypeError):
+                    pass
+
+    if not alerts:
+        alerts.append({"level": "ok", "type": "healthy", "message": "All systems healthy. No alerts."})
+
+    return {"alerts": alerts, "timestamp": datetime.now().isoformat()}
+
+
+@app.get("/model/explainability")
+def get_model_explainability():
+    """Return model explainability: feature importance and per-model performance.
+
+    Shows which model (Prophet vs LSTM) performs better per city,
+    current ensemble weights, and training configuration.
+    """
+    import json
+    from src.config.constants import (
+        PROPHET_EXTRA_TARGETS, WEATHER_TARGETS,
+        SUSTAINED_DRIFT_DAYS, RETRAIN_COOLDOWN_DAYS,
+        RETRAIN_INTERVAL_DAYS, DRIFT_THRESHOLD,
+    )
+
+    result = {
+        "ensemble_strategy": "Dynamic weights (inverse MAE)",
+        "targets": {
+            "temperature": "Prophet + LSTM ensemble (dynamic weights)",
+            **{t: "Prophet only" for t in PROPHET_EXTRA_TARGETS},
+        },
+        "retrain_policy": {
+            "seasonal_interval_days": RETRAIN_INTERVAL_DAYS,
+            "sustained_drift_days": SUSTAINED_DRIFT_DAYS,
+            "cooldown_days": RETRAIN_COOLDOWN_DAYS,
+            "drift_threshold_celsius": DRIFT_THRESHOLD,
+        },
+        "feature_engineering": [
+            {"name": "temp_lag_1..24", "type": "lag", "description": "Historical temperature at 1,2,3,6,12,24 hours ago"},
+            {"name": "temp_rolling_7d", "type": "trend", "description": "7-day rolling average temperature"},
+            {"name": "temp_amplitude", "type": "stability", "description": "Max-min temperature in 24h window"},
+            {"name": "pressure_change_24h", "type": "weather_signal", "description": "Pressure change in 24h (cold front indicator)"},
+            {"name": "dewpoint_spread", "type": "weather_signal", "description": "Temperature - Dewpoint (rain/fog predictor)"},
+            {"name": "day_of_week", "type": "temporal", "description": "Day of week (0-6)"},
+            {"name": "month", "type": "temporal", "description": "Month (1-12, seasonal signal)"},
+            {"name": "hour", "type": "temporal", "description": "Hour of day (0-23, diurnal cycle)"},
+        ],
+    }
+
+    # Add per-model performance from registry
+    registry_path = os.path.join(MODELS_DIR, "registry.json")
+    if os.path.exists(registry_path):
+        with open(registry_path, "r", encoding="utf-8") as f:
+            raw = f.read()
+        raw = raw.replace("Infinity", "null").replace("NaN", "null")
+        registry = json.loads(raw)
+
+        models = registry.get("models", [])
+        latest = None
+        for m in reversed(models):
+            if m.get("decision") == "accept":
+                latest = m
+                break
+
+        if latest:
+            metrics = latest.get("metrics", {})
+            model_performance = {}
+            for key, val in metrics.items():
+                if isinstance(val, dict) and "mae" in val:
+                    model_performance[key] = _sanitize_json(val)
+
+            result["current_version"] = latest.get("version")
+            result["trained_at"] = latest.get("trained_at")
+            result["model_performance"] = model_performance
+
+            # Calculate dynamic weights
+            import numpy as np
+            prophet_maes = []
+            for k, v in model_performance.items():
+                if k.startswith("prophet_hourly") and v.get("mae"):
+                    prophet_maes.append(v["mae"])
+            lstm_mae = model_performance.get("lstm_hourly", {}).get("mae")
+
+            if prophet_maes and lstm_mae:
+                avg_prophet = np.mean(prophet_maes)
+                inv_p = 1.0 / avg_prophet
+                inv_l = 1.0 / lstm_mae
+                pw = round(max(0.3, min(0.7, inv_p / (inv_p + inv_l))), 2)
+                result["dynamic_weights"] = {
+                    "prophet": pw,
+                    "lstm": round(1 - pw, 2),
+                    "reason": f"Prophet avg MAE={avg_prophet:.2f}, LSTM MAE={lstm_mae:.2f}"
+                }
+
+    return result
+
+
 @app.get("/")
 def root():
     return {
@@ -328,6 +510,9 @@ def root():
             "forecast": "/forecast?city=hanoi&days=3",
             "model_registry": "/model/registry",
             "model_history": "/model/history",
+            "model_performance": "/model/performance",
+            "model_alerts": "/model/alerts",
+            "model_explainability": "/model/explainability",
             "health": "/health",
         },
     }

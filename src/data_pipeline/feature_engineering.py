@@ -8,14 +8,17 @@ from src.config.gcp import USE_BIGQUERY
 
 
 def add_features(df: pd.DataFrame, is_hourly: bool = True) -> pd.DataFrame:
-    """Add temporal and lag features for Prophet regressors."""
+    """Add temporal, lag, and domain-specific weather features for Prophet regressors."""
     df = df.copy()
+
+    # ── Temporal features ──
     df["day_of_week"] = df["ds"].dt.dayofweek
     df["month"] = df["ds"].dt.month
 
     if is_hourly:
         df["hour"] = df["ds"].dt.hour
 
+    # ── Lag features ──
     lag_list = HOURLY_LAG_LIST if is_hourly else DAILY_LAG_LIST
 
     for lag in lag_list:
@@ -23,6 +26,30 @@ def add_features(df: pd.DataFrame, is_hourly: bool = True) -> pd.DataFrame:
             df[f"temp_lag_{lag}"] = df["y"].shift(lag)
         if "residual" in df.columns:
             df[f"residual_lag_{lag}"] = df["residual"].shift(lag)
+
+    # ── Domain-specific weather features ──
+    if "y" in df.columns:
+        # Rolling mean 7 ngày (xu hướng nhiệt độ trung hạn)
+        rolling_window = 7 * 24 if is_hourly else 7
+        df["temp_rolling_7d"] = df["y"].rolling(window=rolling_window, min_periods=1).mean()
+
+        # Biên độ nhiệt trong ngày (độ ổn định thời tiết)
+        # Tính max - min nhiệt độ trong 24h gần nhất
+        amp_window = 24 if is_hourly else 1
+        df["temp_amplitude"] = (
+            df["y"].rolling(window=amp_window, min_periods=1).max()
+            - df["y"].rolling(window=amp_window, min_periods=1).min()
+        )
+
+    # Chênh lệch áp suất 24h (dấu hiệu front lạnh/bão)
+    if "pressure" in df.columns:
+        pressure_lag = 24 if is_hourly else 1
+        df["pressure_change_24h"] = df["pressure"] - df["pressure"].shift(pressure_lag)
+
+    # Dewpoint spread (chênh lệch nhiệt độ - điểm sương → dự đoán mưa/sương mù)
+    # Spread nhỏ → độ ẩm cao → khả năng mưa cao
+    if "dewpoint" in df.columns and "y" in df.columns:
+        df["dewpoint_spread"] = df["y"] - df["dewpoint"]
 
     return df
 

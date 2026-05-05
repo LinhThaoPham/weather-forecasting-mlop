@@ -100,7 +100,7 @@ def get_multi_city_history(hours: int = 192) -> dict[str, pd.DataFrame]:
 # ============== SERVICE CALLS ==============
 
 def call_prophet_api(future_ds: list[str], mode: str = "hourly", city: str = "hanoi"):
-    """Call Prophet API with timestamps + city to load the correct per-city model."""
+    """Call Prophet API with timestamps + city. Returns dict with predictions + confidence."""
     try:
         data = [{"ds": ds} for ds in future_ds]
 
@@ -112,7 +112,11 @@ def call_prophet_api(future_ds: list[str], mode: str = "hourly", city: str = "ha
         result = response.json()
 
         if result.get("status") == "success":
-            return np.array(result["predictions"])
+            return {
+                "predictions": np.array(result["predictions"]),
+                "confidence_lower": result.get("confidence_lower"),
+                "confidence_upper": result.get("confidence_upper"),
+            }
         else:
             print(f"⚠ Prophet API error: {result}")
             return None
@@ -180,12 +184,105 @@ def call_lstm_api_multi_city(city_temps: dict[str, list[float]], mode: str = "ho
 
 # ============== ENSEMBLE ==============
 
-def ensemble_predictions(prophet_pred, lstm_pred, prophet_weight=0.6, lstm_weight=0.4):
-    """Blend Prophet and LSTM predictions."""
+def get_dynamic_weights() -> tuple[float, float]:
+    """Calculate ensemble weights based on recent model performance.
+
+    Reads performance_history.json to determine which model
+    has been more accurate recently, and assigns higher weight accordingly.
+    Falls back to 0.5/0.5 if no history available.
+    """
+    import json
+    import os
+
+    history_path = os.path.join(
+        os.path.dirname(__file__), "..", "..", "models", "registry.json"
+    )
+    history_path = os.path.normpath(history_path)
+
+    try:
+        if not os.path.exists(history_path):
+            return 0.5, 0.5
+
+        with open(history_path, "r", encoding="utf-8") as f:
+            registry = json.load(f)
+
+        models = registry.get("models", [])
+        if not models:
+            return 0.5, 0.5
+
+        # Get latest accepted model metrics
+        latest = None
+        for m in reversed(models):
+            if m.get("decision") == "accept":
+                latest = m
+                break
+
+        if latest is None:
+            return 0.5, 0.5
+
+        metrics = latest.get("metrics", {})
+        prophet_mae = None
+        lstm_mae = None
+
+        # Average Prophet MAE across cities
+        prophet_maes = []
+        for key, val in metrics.items():
+            if key.startswith("prophet_hourly") and isinstance(val, dict):
+                mae = val.get("mae")
+                if mae is not None and mae != float("inf") and not np.isnan(mae):
+                    prophet_maes.append(mae)
+        if prophet_maes:
+            prophet_mae = np.mean(prophet_maes)
+
+        # LSTM MAE
+        lstm_m = metrics.get("lstm_hourly", {})
+        if isinstance(lstm_m, dict):
+            mae = lstm_m.get("mae")
+            if mae is not None and mae != float("inf") and not np.isnan(mae):
+                lstm_mae = mae
+
+        if prophet_mae is None or lstm_mae is None:
+            return 0.5, 0.5
+
+        # Inverse MAE weighting: lower MAE → higher weight
+        # w_prophet = (1/prophet_mae) / (1/prophet_mae + 1/lstm_mae)
+        if prophet_mae == 0:
+            return 0.9, 0.1
+        if lstm_mae == 0:
+            return 0.1, 0.9
+
+        inv_prophet = 1.0 / prophet_mae
+        inv_lstm = 1.0 / lstm_mae
+        total = inv_prophet + inv_lstm
+
+        prophet_w = round(inv_prophet / total, 2)
+        lstm_w = round(1.0 - prophet_w, 2)
+
+        # Clamp weights to [0.3, 0.7] to prevent one model dominating completely
+        prophet_w = max(0.3, min(0.7, prophet_w))
+        lstm_w = 1.0 - prophet_w
+
+        return prophet_w, lstm_w
+
+    except Exception as e:
+        print(f"⚠ Dynamic weight calculation failed ({e}), using 0.5/0.5")
+        return 0.5, 0.5
+
+
+def ensemble_predictions(prophet_pred, lstm_pred, prophet_weight=None, lstm_weight=None):
+    """Blend Prophet and LSTM predictions with dynamic weights.
+
+    If weights not provided, calculates them from recent model performance.
+    """
     if lstm_pred is None:
         return prophet_pred
     if prophet_pred is None:
         return lstm_pred
+
+    if prophet_weight is None or lstm_weight is None:
+        prophet_weight, lstm_weight = get_dynamic_weights()
+
+    print(f"  ⚖ Ensemble weights: Prophet={prophet_weight:.0%}, LSTM={lstm_weight:.0%}")
 
     min_len = min(len(prophet_pred), len(lstm_pred))
     return prophet_weight * np.array(prophet_pred[:min_len]) + lstm_weight * np.array(lstm_pred[:min_len])
@@ -249,7 +346,16 @@ def predict_weather(hours=72, days=3, mode="hourly", city="hanoi"):
             )
 
         future_ds = [ts.strftime("%Y-%m-%d %H:%M:%S") for ts in future_timestamps]
-        prophet_preds = call_prophet_api(future_ds, mode=mode, city=city)
+        prophet_result = call_prophet_api(future_ds, mode=mode, city=city)
+
+        # Unpack prophet result (now returns dict with predictions + confidence)
+        prophet_preds = None
+        confidence_lower = None
+        confidence_upper = None
+        if prophet_result is not None:
+            prophet_preds = prophet_result["predictions"]
+            confidence_lower = prophet_result.get("confidence_lower")
+            confidence_upper = prophet_result.get("confidence_upper")
 
         # ── Step 4: Ensemble ──
         if prophet_preds is None and lstm_preds is None:
@@ -279,6 +385,12 @@ def predict_weather(hours=72, days=3, mode="hourly", city="hanoi"):
             'lstm_pred': lstm_preds[:out_len].tolist() if lstm_preds is not None else [None] * out_len,
             'final_pred': np.array(final_preds[:out_len]).tolist(),
         })
+
+        # Confidence intervals from Prophet
+        if confidence_lower and len(confidence_lower) >= out_len:
+            df_out['confidence_lower'] = [round(v, 1) for v in confidence_lower[:out_len]]
+        if confidence_upper and len(confidence_upper) >= out_len:
+            df_out['confidence_upper'] = [round(v, 1) for v in confidence_upper[:out_len]]
 
         # ── Step 6: Get extra variables from Prophet multi-var ──
         extra_vars = call_prophet_multi_var(future_ds, city=city)
@@ -311,7 +423,7 @@ def health():
 def root():
     return {
         "message": "Weather ML API (Prophet + LSTM)",
-        "model": "Hybrid Ensemble: 0.6*Prophet + 0.4*LSTM",
+        "model": "Hybrid Ensemble: Dynamic weights (Prophet + LSTM based on recent MAE)",
         "architecture": "Pure ML — reads history from DB, models predict future",
         "data_source": "SQLite (weather_historical) — NO external forecast API used",
         "supported_cities": list(CITIES.keys())

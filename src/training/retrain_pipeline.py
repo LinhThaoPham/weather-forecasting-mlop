@@ -349,7 +349,11 @@ def train_lstm_models(weather_data, train_dir: str) -> dict:
 
 
 def evaluate_and_decide(all_metrics: dict) -> str:
-    """Step 3: Compare new vs old models, return 'accept' or 'rollback'."""
+    """Step 3: Champion/Challenger — new models must beat current ones.
+
+    Checks ALL models: LSTM (hourly+daily) and Prophet (per-city, hourly+daily).
+    Rollback if ANY model is worse than current champion.
+    """
     from src.training.evaluate import compare_models
 
     old_metrics = get_current_metrics()
@@ -357,12 +361,25 @@ def evaluate_and_decide(all_metrics: dict) -> str:
         print("   No previous models found — accepting new models")
         return "accept"
 
-    for model_name in ["prophet_hourly", "lstm_hourly"]:
+    # Check LSTM models (multi-city, single metric each)
+    for model_name in ["lstm_hourly", "lstm_daily"]:
         old_m = old_metrics.get(model_name)
         new_m = all_metrics.get(model_name)
         if old_m and new_m and compare_models(new_m, old_m) == "rollback":
+            print(f"   ⚠ {model_name}: challenger lost → ROLLBACK")
             return "rollback"
 
+    # Check Prophet models (per-city)
+    for city_id in CITY_IDS:
+        for mode in ["hourly", "daily"]:
+            key = f"prophet_{mode}_{city_id}"
+            old_m = old_metrics.get(key)
+            new_m = all_metrics.get(key)
+            if old_m and new_m and compare_models(new_m, old_m) == "rollback":
+                print(f"   ⚠ {key}: challenger lost → ROLLBACK")
+                return "rollback"
+
+    print("   ✓ All challengers beat champions — ACCEPT")
     return "accept"
 
 

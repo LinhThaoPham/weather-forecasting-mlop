@@ -1,8 +1,15 @@
-"""Drift Detection — Compare AI predictions vs actual data.
+"""Model Performance Monitor — Track prediction accuracy over time.
 
-Core MLOps concept: Only retrain when model performance degrades.
-Compares yesterday's AI predictions against today's actual observations.
+Replaces the old "drift detection" which incorrectly triggered daily retrains.
+
+Strategy:
+  - Daily: compute prediction error (MAE) per city, save to performance_history.json
+  - Retrain trigger: ONLY when MAE exceeds threshold for N consecutive days (sustained drift)
+  - Cooldown: minimum 14 days between retrains to avoid thrashing
 """
+import json
+import os
+
 import numpy as np
 import pandas as pd
 from datetime import datetime, timedelta
@@ -10,10 +17,19 @@ from datetime import datetime, timedelta
 from src.config.cities import CITIES
 from src.config.db import get_connection
 from src.config.gcp import USE_BIGQUERY
+from src.config.constants import (
+    DRIFT_THRESHOLD,
+    RETRAIN_COOLDOWN_DAYS,
+    SUSTAINED_DRIFT_DAYS,
+)
 
-# Drift threshold in °C — retrain only if MAE exceeds this
-DRIFT_THRESHOLD = 2.0
+PROJECT_ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", ".."))
+MODELS_DIR = os.path.join(PROJECT_ROOT, "models")
+PERFORMANCE_HISTORY_PATH = os.path.join(MODELS_DIR, "performance_history.json")
+REGISTRY_PATH = os.path.join(MODELS_DIR, "registry.json")
 
+
+# ===== Data Fetching (unchanged) =====
 
 def get_yesterday_predictions(city_id: str) -> pd.DataFrame | None:
     """Fetch AI predictions that targeted yesterday's timestamps."""
@@ -77,11 +93,13 @@ def get_actual_observations(city_id: str, date_str: str) -> pd.DataFrame | None:
     return df
 
 
-def compute_drift(city_id: str) -> dict:
-    """Compare yesterday's AI predictions with actual observations.
+# ===== Performance Computation =====
+
+def compute_city_performance(city_id: str) -> dict:
+    """Compare yesterday's AI predictions with actual observations for a city.
 
     Returns:
-        dict with keys: mae, n_compared, drifted, message
+        dict with keys: mae, n_compared, exceeded_threshold, message
     """
     yesterday = (datetime.now() - timedelta(days=1)).strftime("%Y-%m-%d")
 
@@ -90,7 +108,7 @@ def compute_drift(city_id: str) -> dict:
         return {
             "mae": None,
             "n_compared": 0,
-            "drifted": None,
+            "exceeded_threshold": None,
             "message": f"No AI predictions found for {city_id} on {yesterday}",
         }
 
@@ -99,7 +117,7 @@ def compute_drift(city_id: str) -> dict:
         return {
             "mae": None,
             "n_compared": 0,
-            "drifted": None,
+            "exceeded_threshold": None,
             "message": f"No actual data found for {city_id} on {yesterday}",
         }
 
@@ -113,70 +131,193 @@ def compute_drift(city_id: str) -> dict:
         return {
             "mae": None,
             "n_compared": 0,
-            "drifted": None,
+            "exceeded_threshold": None,
             "message": f"No matching timestamps for {city_id} on {yesterday}",
         }
 
     mae = float(np.mean(np.abs(merged["predicted_temp"] - merged["temperature"])))
-    drifted = mae > DRIFT_THRESHOLD
+    exceeded = mae > DRIFT_THRESHOLD
 
     return {
         "mae": round(mae, 2),
         "n_compared": len(merged),
-        "drifted": drifted,
+        "exceeded_threshold": exceeded,
         "message": (
-            f"{city_id}: MAE={mae:.2f}°C ({'DRIFT DETECTED' if drifted else 'OK'}) "
+            f"{city_id}: MAE={mae:.2f}°C ({'⚠ EXCEEDED' if exceeded else '✓ OK'}) "
             f"[{len(merged)} hours compared]"
         ),
     }
 
 
-def check_drift_all_cities() -> dict:
-    """Run drift detection across all cities.
+# ===== Performance History =====
+
+def load_performance_history() -> list:
+    """Load daily performance history from disk."""
+    if os.path.exists(PERFORMANCE_HISTORY_PATH):
+        try:
+            with open(PERFORMANCE_HISTORY_PATH, "r", encoding="utf-8") as f:
+                return json.load(f)
+        except (json.JSONDecodeError, ValueError):
+            return []
+    return []
+
+
+def save_performance_history(entries: list) -> None:
+    """Save performance history to disk."""
+    with open(PERFORMANCE_HISTORY_PATH, "w", encoding="utf-8") as f:
+        json.dump(entries, f, indent=2, ensure_ascii=False)
+
+
+def check_daily_performance() -> dict:
+    """Monitor model performance across all cities, save to history.
+
+    This ONLY logs metrics — it does NOT trigger retraining.
 
     Returns:
-        dict with:
-            - should_retrain: bool
-            - city_results: per-city drift info
-            - summary: human-readable summary
+        dict with avg_mae, city_results, exceeded_threshold
     """
     results = {}
-    drift_cities = []
+    mae_values = []
 
     for city_id in CITIES:
-        result = compute_drift(city_id)
+        result = compute_city_performance(city_id)
         results[city_id] = result
         print(f"  📊 {result['message']}")
 
-        if result["drifted"] is True:
-            drift_cities.append(city_id)
+        if result["mae"] is not None:
+            mae_values.append(result["mae"])
 
-    # Retrain if ANY city has drifted
-    should_retrain = len(drift_cities) > 0
+    avg_mae = round(float(np.mean(mae_values)), 2) if mae_values else None
+    exceeded = avg_mae is not None and avg_mae > DRIFT_THRESHOLD
 
-    # Edge case: no predictions existed (first run) → retrain anyway
-    has_any_comparison = any(r["n_compared"] > 0 for r in results.values())
-    if not has_any_comparison:
-        print("  ⚠ No previous predictions found — first run, will retrain")
-        should_retrain = True
+    today_entry = {
+        "date": datetime.now().strftime("%Y-%m-%d"),
+        "city_results": {
+            cid: {"mae": r["mae"], "n_compared": r["n_compared"]}
+            for cid, r in results.items()
+        },
+        "avg_mae": avg_mae,
+        "exceeded_threshold": exceeded,
+    }
+
+    # Append to history
+    history = load_performance_history()
+    history.append(today_entry)
+    # Keep last 90 days only
+    history = history[-90:]
+    save_performance_history(history)
+
+    status = f"⚠ EXCEEDED ({avg_mae:.2f}°C > {DRIFT_THRESHOLD}°C)" if exceeded else f"✓ OK ({avg_mae:.2f}°C)" if avg_mae else "? No data"
+    print(f"\n  🎯 Daily performance: {status}")
+    print(f"  📁 History saved ({len(history)} entries)")
+
+    return {
+        "avg_mae": avg_mae,
+        "city_results": results,
+        "exceeded_threshold": exceeded,
+    }
+
+
+def check_sustained_drift() -> bool:
+    """Check if performance has exceeded threshold for N consecutive days.
+
+    Returns True ONLY if the last SUSTAINED_DRIFT_DAYS entries ALL exceeded
+    the threshold. This prevents retraining on temporary bad days.
+    """
+    history = load_performance_history()
+
+    if len(history) < SUSTAINED_DRIFT_DAYS:
+        print(f"  📊 Not enough history ({len(history)}/{SUSTAINED_DRIFT_DAYS} days) — no sustained drift")
+        return False
+
+    recent = history[-SUSTAINED_DRIFT_DAYS:]
+    all_exceeded = all(
+        entry.get("exceeded_threshold", False) for entry in recent
+    )
+
+    if all_exceeded:
+        dates = [e["date"] for e in recent]
+        print(f"  🔴 Sustained drift detected: {SUSTAINED_DRIFT_DAYS} consecutive days ({dates[0]} → {dates[-1]})")
+    else:
+        exceeded_count = sum(1 for e in recent if e.get("exceeded_threshold", False))
+        print(f"  ✓ No sustained drift: {exceeded_count}/{SUSTAINED_DRIFT_DAYS} recent days exceeded threshold")
+
+    return all_exceeded
+
+
+def check_cooldown() -> bool:
+    """Check if enough time has passed since last retrain.
+
+    Returns True if retrain is allowed (cooldown has elapsed).
+    """
+    if not os.path.exists(REGISTRY_PATH):
+        return True
+
+    try:
+        with open(REGISTRY_PATH, "r", encoding="utf-8") as f:
+            registry = json.load(f)
+    except (json.JSONDecodeError, ValueError):
+        return True
+
+    models = registry.get("models", [])
+    if not models:
+        return True
+
+    # Find last accepted retrain date
+    last_retrain = None
+    for model in reversed(models):
+        if model.get("decision") == "accept":
+            try:
+                last_retrain = datetime.fromisoformat(model["trained_at"].split("+")[0])
+            except (KeyError, ValueError):
+                continue
+            break
+
+    if last_retrain is None:
+        return True
+
+    days_since = (datetime.now() - last_retrain).days
+    allowed = days_since >= RETRAIN_COOLDOWN_DAYS
+
+    if not allowed:
+        print(f"  ⏳ Cooldown active: {days_since}/{RETRAIN_COOLDOWN_DAYS} days since last retrain")
+    else:
+        print(f"  ✓ Cooldown elapsed: {days_since} days since last retrain")
+
+    return allowed
+
+
+# ===== Legacy compat =====
+
+def check_drift_all_cities() -> dict:
+    """Legacy wrapper — now uses performance monitoring instead of instant retrain.
+
+    Returns same structure for backward compatibility, but should_retrain
+    is now based on sustained drift + cooldown, not single-day drift.
+    """
+    perf = check_daily_performance()
+    sustained = check_sustained_drift()
+    cooldown_ok = check_cooldown() if sustained else False
+
+    should_retrain = sustained and cooldown_ok
 
     summary = (
-        f"Drift check: {len(drift_cities)}/{len(CITIES)} cities drifted "
+        f"Performance check: avg MAE={perf['avg_mae']}°C "
         f"(threshold: {DRIFT_THRESHOLD}°C) → "
-        f"{'RETRAIN' if should_retrain else 'SKIP'}"
+        f"{'RETRAIN (sustained drift + cooldown OK)' if should_retrain else 'SKIP'}"
     )
     print(f"\n  🎯 {summary}")
 
     return {
         "should_retrain": should_retrain,
-        "city_results": results,
+        "city_results": perf["city_results"],
         "summary": summary,
         "threshold": DRIFT_THRESHOLD,
     }
 
 
 def save_ai_predictions(city_id: str, predictions: list[dict], model_version: str) -> int:
-    """Save AI predictions to DB for tomorrow's drift comparison.
+    """Save AI predictions to DB for tomorrow's performance comparison.
 
     Args:
         city_id: city identifier

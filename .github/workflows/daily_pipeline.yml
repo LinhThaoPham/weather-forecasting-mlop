@@ -18,7 +18,7 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 30
     outputs:
-      drift_detected: ${{ steps.drift.outputs.drift_detected }}
+      sustained_drift: ${{ steps.drift.outputs.sustained_drift }}
 
     steps:
       - name: Checkout repository
@@ -67,34 +67,34 @@ jobs:
 
           echo "Exit code: $EXIT_CODE"
 
-          # Kiểm tra drift từ output
-          if grep -q "RETRAIN\|DRIFT DETECTED\|should_retrain.*true" /tmp/pipeline_output.txt; then
-            echo "drift_detected=true" >> $GITHUB_OUTPUT
-            echo "⚠️ Drift detected! Will trigger retrain."
+          # Kiểm tra sustained drift từ output
+          if grep -q "Sustained drift detected\|sustained_drift.*true" /tmp/pipeline_output.txt; then
+            echo "sustained_drift=true" >> $GITHUB_OUTPUT
+            echo "⚠️ Sustained drift detected! Will trigger retrain."
           else
-            echo "drift_detected=false" >> $GITHUB_OUTPUT
-            echo "✅ No drift detected."
+            echo "sustained_drift=false" >> $GITHUB_OUTPUT
+            echo "✅ No sustained drift."
           fi
 
           # Thoát với exit code gốc
           exit $EXIT_CODE
 
       - name: Create drift alert issue (if drift)
-        if: steps.drift.outputs.drift_detected == 'true'
+        if: steps.drift.outputs.sustained_drift == 'true'
         uses: actions/github-script@v7
         with:
           script: |
             github.rest.issues.create({
               owner: context.repo.owner,
               repo: context.repo.repo,
-              title: `🔴 Model Drift Detected - ${new Date().toISOString().split('T')[0]}`,
-              body: `## Model Drift Alert\n\nDrift detected during daily pipeline run.\n\nRetrain job will be triggered automatically.\n\n**Run:** [${context.runId}](${context.serverUrl}/${context.repo.owner}/${context.repo.repo}/actions/runs/${context.runId})`,
+              title: `🔴 Sustained Model Drift Detected - ${new Date().toISOString().split('T')[0]}`,
+              body: `## Sustained Model Drift Alert\n\nSustained drift (7 consecutive days) detected during daily pipeline run.\n\nRetrain job will be triggered automatically.\n\n**Run:** [${context.runId}](${context.serverUrl}/${context.repo.owner}/${context.repo.repo}/actions/runs/${context.runId})`,
               labels: ['drift', 'auto-retrain']
             })
 
-  # Trigger retrain nếu drift
+  # Trigger retrain nếu sustained drift (7 ngày liên tiếp)
   trigger-retrain:
     needs: daily-pipeline
-    if: needs.daily-pipeline.outputs.drift_detected == 'true'
+    if: needs.daily-pipeline.outputs.sustained_drift == 'true'
     uses: ./.github/workflows/retrain.yml
     secrets: inherit

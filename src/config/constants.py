@@ -36,13 +36,19 @@ LSTM_WEIGHT = 0.4
 # Multi-variable prediction targets
 # temperature = LSTM + Prophet ensemble, others = Prophet only
 WEATHER_TARGETS = ["temperature", "humidity", "wind_speed", "cloud_cover"]
-PROPHET_EXTRA_TARGETS = ["humidity", "wind_speed", "cloud_cover"]
+PROPHET_EXTRA_TARGETS = ["humidity", "wind_speed", "cloud_cover", "precipitation"]
 
-# Evaluation
-MAE_REGRESSION_THRESHOLD = 0.10
+# Evaluation — Champion/Challenger
+# Model mới phải tốt hơn (MAE ≤ cũ), RMSE không tệ hơn 5%
+RMSE_TOLERANCE = 0.05
+
+# Monitoring — Performance tracking
+DRIFT_THRESHOLD = 2.0               # °C — MAE trung bình vượt ngưỡng này = cảnh báo
+SUSTAINED_DRIFT_DAYS = 7            # Số ngày liên tiếp vượt threshold mới trigger retrain
+RETRAIN_COOLDOWN_DAYS = 14          # Minimum days giữa 2 lần retrain
 
 # Retrain
-RETRAIN_INTERVAL_DAYS = 90
+RETRAIN_INTERVAL_DAYS = 90          # Seasonal retrain (mỗi 3 tháng)
 
 # Feature Engineering
 HOURLY_LAG_LIST = [1, 2, 3, 6, 12, 24]

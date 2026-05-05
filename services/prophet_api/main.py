@@ -159,11 +159,13 @@ def forecast(request: ProphetForecastRequest):
 
         forecast_result = model.predict(df[['ds']])
 
-        return ProphetForecastResponse(
-            status="success",
-            mode=request.mode,
-            predictions=forecast_result['yhat'].tolist()
-        )
+        return {
+            "status": "success",
+            "mode": request.mode,
+            "predictions": forecast_result['yhat'].tolist(),
+            "confidence_lower": forecast_result['yhat_lower'].tolist(),
+            "confidence_upper": forecast_result['yhat_upper'].tolist(),
+        }
 
     except HTTPException:
         raise
@@ -202,6 +204,8 @@ def forecast_multi_var(request: ProphetMultiVarRequest):
                     preds = [max(0, min(100, p)) for p in preds]
                 elif target == "wind_speed":
                     preds = [max(0, p) for p in preds]
+                elif target == "precipitation":
+                    preds = [max(0, round(p, 1)) for p in preds]
                 result[target] = preds
             else:
                 result[target] = None

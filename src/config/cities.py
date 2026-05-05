@@ -1,7 +1,3 @@
-"""
-Shared city configuration — Single source of truth.
-All services import from here to avoid duplication.
-"""
 
 CITIES = {
     "hanoi": {
@@ -23,7 +19,6 @@ CITIES = {
         "country": "VN"
     },
 }
-
 def get_city_coords(city: str = "hanoi"):
     """Get city info dict. Returns Hà Nội as default."""
     return CITIES.get(city.lower(), CITIES["hanoi"])
